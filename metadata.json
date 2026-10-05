@@ -1,0 +1,6 @@
+{
+  "name": "Sakura CineSubz API Portal & Playground",
+  "description": "High-performance CineSubz Movie & TV scraper API hub with live RAM usage, system diagnostics, and interactive playground.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
