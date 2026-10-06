@@ -71,11 +71,12 @@ export async function scrapeCineSubzMovies(query: string): Promise<SearchResultI
         const titleEl = $(el).find('.title a, h3 a, .entry-title a, h2 a, a.bookmark').first();
         const title = titleEl.text().trim();
         const link = titleEl.attr('href') || $(el).find('a').first().attr('href') || '';
-        
-        const image = 
-          $(el).find('img').first().attr('src') || 
-          $(el).find('img').first().attr('data-src') \vert{}\vert{}$(el).find('img').first().attr('data-lazy-src') || '';
-          
+
+        const image =
+          $(el).find('img').first().attr('src') ||
+          $(el).find('img').first().attr('data-src') ||
+          $(el).find('img').first().attr('data-lazy-src') || '';
+
         const year = $(el).find('.year, .meta .date, .extra .date, .metadata span').first().text().trim();
 
         if (title && link) {
@@ -138,7 +139,7 @@ export async function scrapeCineSubzMovieInfo(targetUrlOrQuery: string): Promise
           const downloads: Array<{ title: string; quality: string; link: string; size?: string }> = [];
 
           $('a[href*="mega"], a[href*="drive"], a[href*="pixeldrain"], a[href*="dl"], a.download-btn, .download-links a, table.downloads tr a').each((_, el) => {
-            let link = $(el).attr('href') || $(el).attr('data-link') \vert{}\vert{}$(el).attr('data-url') || '';
+            let link = $(el).attr('href') || $(el).attr('data-link') || $(el).attr('data-url') || '';
             const t = $(el).text().trim() || 'Direct Download';
 
             if (link.includes('?r=') || link.includes('redirect=')) {
