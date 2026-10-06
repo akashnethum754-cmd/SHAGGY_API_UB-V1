@@ -46,8 +46,6 @@ export interface TVSeriesInfoResult {
 }
 
 export async function scrapeCineSubzMovies(query: string): Promise<SearchResultItem[]> {
-  const normalizedQuery = (query || '').trim().toLowerCase();
-
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 6000);
@@ -96,10 +94,9 @@ export async function scrapeCineSubzMovies(query: string): Promise<SearchResultI
       }
     }
   } catch (err) {
-    // Scraper connection fallback
+    // Connection fallback
   }
 
-  // If live search fails or yields 0 results
   const capitalizedQuery = query.charAt(0).toUpperCase() + query.slice(1);
   return [
     {
@@ -140,12 +137,10 @@ export async function scrapeCineSubzMovieInfo(targetUrlOrQuery: string): Promise
         if (title) {
           const downloads: Array<{ title: string; quality: string; link: string; size?: string }> = [];
 
-          // Targeting direct links, download tables & encrypted redirect URLs
           $('a[href*="mega"], a[href*="drive"], a[href*="pixeldrain"], a[href*="dl"], a.download-btn, .download-links a, table.downloads tr a').each((_, el) => {
             let link = $(el).attr('href') || $(el).attr('data-link') \vert{}\vert{}$(el).attr('data-url') || '';
             const t = $(el).text().trim() || 'Direct Download';
 
-            // Decode Base64 encoded links if routed through a redirect parameter (?r=aHR0cHM...)
             if (link.includes('?r=') || link.includes('redirect=')) {
               try {
                 const urlParams = new URLSearchParams(link.split('?')[1]);
@@ -154,11 +149,10 @@ export async function scrapeCineSubzMovieInfo(targetUrlOrQuery: string): Promise
                   link = Buffer.from(rawEncoded, 'base64').toString('utf-8');
                 }
               } catch (e) {
-                // Keep original URL on decode failure
+                // Keep default link
               }
             }
 
-            // Exclude noise, loopbacks, and social icons
             const isValidDownload =
               link &&
               !link.startsWith('#') &&
@@ -185,7 +179,6 @@ export async function scrapeCineSubzMovieInfo(targetUrlOrQuery: string): Promise
             }
           });
 
-          // Unique Direct Links filter
           const uniqueDownloads = downloads.filter(
             (item, index, self) => index === self.findIndex((t) => t.link === item.link)
           );
@@ -209,7 +202,7 @@ export async function scrapeCineSubzMovieInfo(targetUrlOrQuery: string): Promise
         }
       }
     } catch (e) {
-      // Scraper error fallback
+      // Fallback
     }
   }
 
