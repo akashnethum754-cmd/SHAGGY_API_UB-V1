@@ -54,26 +54,24 @@ const UA =
 
 // ============================================================
 //  PUPPETEER BROWSER LAUNCHER
+//  Production (Heroku) → @sparticuz/chromium
+//  Development (local)  → full puppeteer
 // ============================================================
 async function getBrowser() {
   const isProd = process.env.NODE_ENV === 'production';
 
   if (isProd) {
-    const puppeteer = await import('puppeteer');
+    const chromium = (await import('@sparticuz/chromium')).default;
+    const puppeteer = await import('puppeteer-core');
+
+    const execPath = await chromium.executablePath();
+    console.log('[browser] chromium path:', execPath);
+
     return puppeteer.default.launch({
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--single-process',
-        '--no-zygote',
-        '--disable-gpu',
-        '--disable-software-rasterizer',
-      ],
-      headless: true,
-      executablePath:
-        process.env.PUPPETEER_EXECUTABLE_PATH ||
-        '/app/.apt/usr/bin/google-chrome',
+      args: [...chromium.args, '--no-sandbox', '--disable-setuid-sandbox'],
+      defaultViewport: chromium.defaultViewport,
+      executablePath: execPath,
+      headless: chromium.headless,
     });
   }
 
@@ -317,7 +315,7 @@ export async function scrapeCineSubzMovieInfo(
     console.log('[info] goto', movieUrl);
     await page.goto(movieUrl, { waitUntil: 'networkidle2', timeout: 30000 });
 
-    // Extract metadata
+    // Extract metadata from DOM
     const meta = await page.evaluate(() => {
       const pick = (sels: string[]) => {
         for (const s of sels) {
@@ -380,7 +378,7 @@ export async function scrapeCineSubzMovieInfo(
       }
     }
 
-    // Wait for AJAX
+    // Wait for AJAX to finish
     await new Promise((r) => setTimeout(r, 4000));
 
     // Try to detect WP nonce & postId from page
@@ -498,7 +496,7 @@ export async function scrapeCineSubzMovieInfo(
 }
 
 // ============================================================
-//  TV INFO — basic scrape
+//  TV INFO — Puppeteer
 // ============================================================
 export async function scrapeCineSubzTVInfo(
   targetUrlOrQuery: string
@@ -555,10 +553,7 @@ export async function scrapeCineSubzTVInfo(
 
       const rating = pick(['.rating', '[itemprop="ratingValue"]']) || 'N/A';
       const year = pick(['.year', '[itemprop="datePublished"]']);
-      const synopsis = pick([
-        '.wp-content p',
-        '[itemprop="description"]',
-      ]);
+      const synopsis = pick(['.wp-content p', '[itemprop="description"]']);
 
       const genre =
         Array.from(
