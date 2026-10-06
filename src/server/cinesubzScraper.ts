@@ -53,45 +53,41 @@ const UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
 
 // ============================================================
-//  PUPPETEER HELPERS (dynamic import — only used when needed)
+//  PUPPETEER BROWSER LAUNCHER
 // ============================================================
 async function getBrowser() {
   const isProd = process.env.NODE_ENV === 'production';
 
   if (isProd) {
-    // Heroku / Lambda — use @sparticuz/chromium
-    const chromium = (await import('@sparticuz/chromium')).default;
-    const puppeteer = await import('puppeteer-core');
-
+    // Heroku — use system Chromium from the puppeteer-heroku-buildpack
+    const puppeteer = await import('puppeteer');
     return puppeteer.default.launch({
-      args: [...chromium.args, '--no-sandbox', '--disable-setuid-sandbox'],
-      defaultViewport: chromium.defaultViewport,
-      executablePath: await chromium.executablePath(),
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--single-process',
+        '--no-zygote',
+        '--disable-gpu',
+        '--disable-software-rasterizer',
+      ],
       headless: true,
+      executablePath:
+        process.env.PUPPETEER_EXECUTABLE_PATH ||
+        '/app/.apt/usr/bin/google-chrome',
     });
-  } else {
-    // Local dev — try full puppeteer first, fallback to system chrome
-    try {
-      const puppeteer = await import('puppeteer');
-      return puppeteer.default.launch({
-        headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox'],
-      });
-    } catch {
-      const puppeteer = await import('puppeteer-core');
-      return puppeteer.default.launch({
-        headless: true,
-        executablePath:
-          process.env.PUPPETEER_EXECUTABLE_PATH ||
-          '/usr/bin/google-chrome',
-        args: ['--no-sandbox', '--disable-setuid-sandbox'],
-      });
-    }
   }
+
+  // Local dev
+  const puppeteer = await import('puppeteer');
+  return puppeteer.default.launch({
+    headless: true,
+    args: ['--no-sandbox', '--disable-setuid-sandbox'],
+  });
 }
 
 // ============================================================
-//  SEARCH — real scrape
+//  SEARCH — Movies & TV (real scrape via fetch)
 // ============================================================
 export async function scrapeCineSubzMovies(query: string): Promise<SearchResultItem[]> {
   const q = (query || '').trim();
@@ -125,37 +121,40 @@ export async function scrapeCineSubzMovies(query: string): Promise<SearchResultI
 
     const $ = cheerio.load(html);
 
-    $('article.item, article, .result-item, .item-movies, .item-tvshows').each((_, el) => {
-      const titleEl = $(el)
-        .find('.data .title a, .data h3 a, .title a, h3 a, h2 a, .entry-title a')
-        .first();
-      const title = titleEl.text().trim();
-      const link = titleEl.attr('href') || '';
+    $('article.item, article, .result-item, .item-movies, .item-tvshows').each(
+      (_, el) => {
+        const titleEl = $(el)
+          .find('.data .title a, .data h3 a, .title a, h3 a, h2 a, .entry-title a')
+          .first();
+        const title = titleEl.text().trim();
+        const link = titleEl.attr('href') || '';
 
-      const image =
-        $(el).find('.poster img, .data img, img').first().attr('src') ||
-        $(el).find('img').first().attr('data-src') ||
-        '';
+        const image =
+          $(el).find('.poster img, .data img, img').first().attr('src') ||
+          $(el).find('img').first().attr('data-src') ||
+          '';
 
-      const quality =
-        $(el).find('.quality, .item-quality, .meta .quality').first().text().trim() || 'N/A';
+        const quality =
+          $(el).find('.quality, .item-quality, .meta .quality').first().text().trim() ||
+          'N/A';
 
-      const ratingRaw =
-        $(el).find('.rating, .vote, .meta .rating').first().text().trim() || 'N/A';
-      const rating = ratingRaw.replace(/[★☆\s]/g, '') || 'N/A';
+        const ratingRaw =
+          $(el).find('.rating, .vote, .meta .rating').first().text().trim() || 'N/A';
+        const rating = ratingRaw.replace(/[★☆\s]/g, '') || 'N/A';
 
-      const yearMatch = title.match(/\((\d{4})\)/);
-      const year = yearMatch ? yearMatch[1] : undefined;
+        const yearMatch = title.match(/\((\d{4})\)/);
+        const year = yearMatch ? yearMatch[1] : undefined;
 
-      let type: 'movie' | 'tvshows' = 'movie';
-      if (link.includes('/tvshows/') || title.toLowerCase().includes('tv series')) {
-        type = 'tvshows';
+        let type: 'movie' | 'tvshows' = 'movie';
+        if (link.includes('/tvshows/') || title.toLowerCase().includes('tv series')) {
+          type = 'tvshows';
+        }
+
+        if (title && link) {
+          results.push({ title, link, image, type, year, rating, quality });
+        }
       }
-
-      if (title && link) {
-        results.push({ title, link, image, type, year, rating, quality });
-      }
-    });
+    );
 
     console.log('[search] results:', results.length);
   } catch (err) {
@@ -213,7 +212,7 @@ export async function scrapeCineSubzMovieInfo(
     }
   }
 
-  // ---------- PUPPETEER: launch browser & intercept downloads ----------
+  // ---------- PUPPETEER ----------
   let browser;
   try {
     browser = await getBrowser();
@@ -222,7 +221,6 @@ export async function scrapeCineSubzMovieInfo(
     const page = await browser.newPage();
     await page.setUserAgent(UA);
 
-    // Collected downloads from intercepted JSON responses
     const collectedDownloads: Array<{
       title: string;
       quality: string;
@@ -231,15 +229,13 @@ export async function scrapeCineSubzMovieInfo(
       link: string;
     }> = [];
 
-    // Intercept JSON responses that look like download lists
+    // Intercept JSON responses (zetaplayer / zetaflix)
     page.on('response', async (response) => {
       try {
         const url = response.url();
         const ct = response.headers()['content-type'] || '';
         if (!ct.includes('json')) return;
         if (!url.includes('/wp-json/')) return;
-
-        // Only interested in zetaplayer / zetaflix
         if (!url.includes('zetaplayer') && !url.includes('zetaflix')) return;
 
         const json = await response.json().catch(() => null);
@@ -247,7 +243,6 @@ export async function scrapeCineSubzMovieInfo(
 
         console.log('[info] intercepted JSON:', url);
 
-        // Walk the JSON tree looking for download-like objects
         const walk = (obj: any) => {
           if (!obj) return;
           if (Array.isArray(obj)) {
@@ -281,7 +276,7 @@ export async function scrapeCineSubzMovieInfo(
     console.log('[info] goto', movieUrl);
     await page.goto(movieUrl, { waitUntil: 'networkidle2', timeout: 30000 });
 
-    // ---------- Extract basic metadata from DOM ----------
+    // Extract metadata from DOM
     const meta = await page.evaluate(() => {
       const pick = (sels: string[]) => {
         for (const s of sels) {
@@ -315,10 +310,16 @@ export async function scrapeCineSubzMovieInfo(
         year: pick(['.year', '[itemprop="datePublished"]']),
         duration: pick(['.runtime', '[itemprop="duration"]', '.duration']),
         director: pick(['.director a', '[itemprop="director"] a']),
+        synopsis: pick([
+          '.wp-content p',
+          '[itemprop="description"]',
+          '.story p',
+          '.synopsis p',
+        ]),
       };
     });
 
-    // ---------- Click every "Download Links" button ----------
+    // Click every "Download Links" button
     const clickSelectors = [
       'text/Direct & Telegram Download Links',
       'a:has-text("Download")',
@@ -338,10 +339,10 @@ export async function scrapeCineSubzMovieInfo(
       }
     }
 
-    // Wait a bit for AJAX responses
+    // Wait for AJAX to finish
     await new Promise((r) => setTimeout(r, 4000));
 
-    // ---------- Also try to extract nonce & hit API manually ----------
+    // Try to detect WP nonce & postId from the page
     const wpConfig = await page.evaluate(() => {
       const w: any = window as any;
       return {
@@ -364,7 +365,7 @@ export async function scrapeCineSubzMovieInfo(
     });
     console.log('[info] wpConfig:', wpConfig);
 
-    // If we got a nonce & postId, hit zetaplayer directly
+    // If we have nonce + postId, hit zetaplayer directly
     if (wpConfig.nonce && wpConfig.postId) {
       try {
         const apiUrl = `${wpConfig.root}zetaplayer/v2/movies/${wpConfig.postId}`;
@@ -386,7 +387,8 @@ export async function scrapeCineSubzMovieInfo(
               if (typeof link === 'string' && link.startsWith('http')) {
                 collectedDownloads.push({
                   title: obj.title || obj.quality || 'Download',
-                  quality: obj.quality || obj.resolution || obj.label || 'Download',
+                  quality:
+                    obj.quality || obj.resolution || obj.label || 'Download',
                   size: obj.size || obj.filesize || 'N/A',
                   language: obj.language || obj.lang || 'English',
                   link,
@@ -405,7 +407,7 @@ export async function scrapeCineSubzMovieInfo(
     await browser.close();
     browser = undefined;
 
-    // ---------- Build final result ----------
+    // Build final result
     const downloads = collectedDownloads.filter(
       (d, i, self) => i === self.findIndex((x) => x.link === d.link)
     );
@@ -421,7 +423,7 @@ export async function scrapeCineSubzMovieInfo(
       duration: meta.duration || 'N/A',
       director: meta.director || 'N/A',
       cast: [],
-      synopsis: '',
+      synopsis: meta.synopsis || '',
       sourceUrl: movieUrl,
       downloads:
         downloads.length > 0
@@ -456,7 +458,7 @@ export async function scrapeCineSubzMovieInfo(
 }
 
 // ============================================================
-//  TV INFO — basic scrape (Puppeteer-lite)
+//  TV INFO — basic scrape
 // ============================================================
 export async function scrapeCineSubzTVInfo(
   targetUrlOrQuery: string
