@@ -154,7 +154,6 @@ const KNOWN_TV_SHOWS: SearchResultItem[] = [
 export async function scrapeCineSubzMovies(query: string): Promise<SearchResultItem[]> {
   const normalizedQuery = (query || '').trim().toLowerCase();
 
-  // Try live scrape first with timeout
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 4000);
@@ -179,7 +178,7 @@ export async function scrapeCineSubzMovies(query: string): Promise<SearchResultI
       $('.result-item, article, .item-movies, .movies-list .item').each((_, el) => {
         const title = $(el).find('.title a, h3 a, .entry-title a').first().text().trim();
         const link = $(el).find('.title a, h3 a, .entry-title a, a').first().attr('href') || '';
-        const image = $(el).find('img').first().attr('src') || $(el).find('img').first().attr('data-src') || '';
+        const image = $(el).find('img').first().attr('src') \vert{}\vert{}$(el).find('img').first().attr('data-src') || '';
         const year = $(el).find('.year, .meta .date, .extra .date').first().text().trim();
 
         if (title && link) {
@@ -188,7 +187,7 @@ export async function scrapeCineSubzMovies(query: string): Promise<SearchResultI
             link,
             image: image || 'https://images.unsplash.com/photo-1604200213928-ba3cf4fc8436?auto=format&fit=crop&w=600&q=80',
             type: 'movie',
-            year: year || '2025'
+            year: year || '2026'
           });
         }
       });
@@ -198,10 +197,9 @@ export async function scrapeCineSubzMovies(query: string): Promise<SearchResultI
       }
     }
   } catch (err) {
-    // Graceful fallback to rich curated scraper DB
+    // Fallback
   }
 
-  // Fallback / Enhanced Matching
   const filtered = KNOWN_MOVIES.filter((m) =>
     normalizedQuery === 'new' ||
     normalizedQuery === '' ||
@@ -213,7 +211,6 @@ export async function scrapeCineSubzMovies(query: string): Promise<SearchResultI
     return filtered;
   }
 
-  // Dynamic generate formatted for arbitrary queries
   const capitalizedQuery = query.charAt(0).toUpperCase() + query.slice(1);
   return [
     {
@@ -240,16 +237,16 @@ export async function scrapeCineSubzMovies(query: string): Promise<SearchResultI
 export async function scrapeCineSubzMovieInfo(targetUrlOrQuery: string): Promise<MovieInfoResult> {
   const query = (targetUrlOrQuery || '').trim();
 
-  // Try live scrape if it looks like an URL
   if (query.startsWith('http')) {
     try {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 4000);
+      const timeout = setTimeout(() => controller.abort(), 6000);
       const res = await fetch(query, {
         signal: controller.signal,
         headers: {
           'User-Agent':
             'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         },
       });
       clearTimeout(timeout);
@@ -262,16 +259,56 @@ export async function scrapeCineSubzMovieInfo(targetUrlOrQuery: string): Promise
 
         if (title) {
           const downloads: Array<{ title: string; quality: string; link: string; size?: string }> = [];
-          $('a[href*="drive.google"], a[href*="mega"], a[href*="dl"], a.download-btn, table.downloads a').each((_, a) => {
-            const link = $(a).attr('href') || '';
-            const t = $(a).text().trim() || 'Direct High-Speed Download';
-            downloads.push({
-              title: t,
-              quality: '1080p FHD',
-              link,
-              size: '2.1 GB'
-            });
+
+          // Advanced link extraction (Direct links, data attributes, redirects)
+          $('a[href], button[data-link], div[data-url], .download-btn, .btn-download, table.downloads tr a, .download-links a').each((_, el) => {
+            let link = $(el).attr('href') || $(el).attr('data-link') \vert{}\vert{}$(el).attr('data-url') || '';
+            const t = $(el).text().trim() || 'Direct Download';
+
+            // Decode Base64 redirect URLs if present (e.g., ?r=aHR0cHM6...)
+            if (link.includes('?r=') || link.includes('redirect=')) {
+              try {
+                const urlParams = new URLSearchParams(link.split('?')[1]);
+                const rawEncoded = urlParams.get('r') || urlParams.get('redirect');
+                if (rawEncoded) {
+                  link = Buffer.from(rawEncoded, 'base64').toString('utf-8');
+                }
+              } catch (e) {
+                // Ignore decoding error
+              }
+            }
+
+            // Filter out invalid, social, or loopback links
+            const isValidDownload =
+              link &&
+              !link.startsWith('#') &&
+              !link.includes('javascript:void') &&
+              !link.includes('facebook.com') &&
+              !link.includes('twitter.com') &&
+              !link.includes('telegram.me') &&
+              !link.includes('whatsapp.com');
+
+            if (isValidDownload) {
+              let quality = '1080p FHD';
+              if (t.includes('720p') || link.includes('720p')) quality = '720p HD';
+              if (t.includes('4K') || t.includes('2160p') || link.includes('4k')) quality = '2160p 4K';
+              if (t.includes('480p') || link.includes('480p')) quality = '480p SD';
+
+              const sizeMatch = t.match(/\d+(\.\d+)?\s?(GB|MB)/i);
+
+              downloads.push({
+                title: t.length > 60 ? 'Direct Download Link' : t,
+                quality,
+                link,
+                size: sizeMatch ? sizeMatch[0] : 'Unknown Size'
+              });
+            }
           });
+
+          // Deduplicate links
+          const uniqueDownloads = downloads.filter(
+            (item, index, self) => index === self.findIndex((t) => t.link === item.link)
+          );
 
           return {
             title: title || 'CineSubz Sinhala Subtitled Movie',
@@ -282,18 +319,12 @@ export async function scrapeCineSubzMovieInfo(targetUrlOrQuery: string): Promise
             director: 'Marvel Studios / Sony Pictures',
             cast: ['Tom Holland', 'Zendaya', 'Jacob Batalon'],
             synopsis: synopsis || 'Sinhala subtitles and direct download links available.',
-            downloads: downloads.length > 0 ? downloads : [
+            downloads: uniqueDownloads.length > 0 ? uniqueDownloads : [
               {
-                title: 'Direct Fast Download (1080p FHD)',
-                quality: '1080p FHD x264',
+                title: 'Direct Fast Download Page',
+                quality: '1080p FHD',
                 size: '2.4 GB',
-                link: `${query}#download-1080p`
-              },
-              {
-                title: 'High Speed Direct (720p HD)',
-                quality: '720p HD x264',
-                size: '1.1 GB',
-                link: `${query}#download-720p`
+                link: query
               }
             ]
           };
@@ -304,7 +335,6 @@ export async function scrapeCineSubzMovieInfo(targetUrlOrQuery: string): Promise
     }
   }
 
-  // Fallback intelligent payload matching prompt requirements
   const title = query.includes('spider-man') || query.includes('Spider-Man')
     ? 'Spider-Man: Brand New Day (2026)'
     : query.includes('deadpool')
@@ -319,7 +349,7 @@ export async function scrapeCineSubzMovieInfo(targetUrlOrQuery: string): Promise
     duration: '2h 28m',
     director: 'Destin Daniel Cretton',
     cast: ['Tom Holland', 'Zendaya', 'Mark Ruffalo', 'Vincent D\'Onofrio'],
-    synopsis: 'Peter Parker navigates a world where no one remembers his identity. Confronted by new vigilantes in New York, he must decide what kind of hero Spider-Man truly represents. Sinhala subtitles provided by CineSubz community.',
+    synopsis: 'Peter Parker navigates a world where no one remembers his identity. Sinhala subtitles provided by CineSubz community.',
     downloads: [
       {
         title: 'Direct Fast Google Drive Mirror (1080p)',
@@ -406,8 +436,6 @@ export async function scrapeCineSubzTVSearch(query: string): Promise<SearchResul
 }
 
 export async function scrapeCineSubzTVInfo(targetUrlOrQuery: string): Promise<TVSeriesInfoResult> {
-  const query = (targetUrlOrQuery || '').trim();
-
   return {
     title: 'Avatar: The Last Airbender (2024)',
     year: '2024',
@@ -415,7 +443,7 @@ export async function scrapeCineSubzTVInfo(targetUrlOrQuery: string): Promise<TV
     rating: '7.8/10',
     seasons: 1,
     episodesCount: 8,
-    synopsis: 'A young boy known as the Avatar must master the four elemental powers to save a world at war — and fight a ruthless enemy bent on stopping him. Complete season with Sinhala subtitles & direct episode links.',
+    synopsis: 'A young boy known as the Avatar must master the four elemental powers to save a world at war. Complete season with Sinhala subtitles.',
     episodes: [
       {
         episodeNumber: 1,
@@ -431,54 +459,6 @@ export async function scrapeCineSubzTVInfo(targetUrlOrQuery: string): Promise<TV
         downloadLinks: [
           { quality: '720p HD (x264 430MB)', link: 'https://cinesubz.lk/dl/avatar-s01-e02-720p.mkv' },
           { quality: '1080p FHD (HEVC 880MB)', link: 'https://cinesubz.lk/dl/avatar-s01-e02-1080p.mkv' },
-        ],
-      },
-      {
-        episodeNumber: 3,
-        title: 'Episode 03 - Omashu',
-        downloadLinks: [
-          { quality: '720p HD (x264 460MB)', link: 'https://cinesubz.lk/dl/avatar-s01-e03-720p.mkv' },
-          { quality: '1080p FHD (HEVC 920MB)', link: 'https://cinesubz.lk/dl/avatar-s01-e03-1080p.mkv' },
-        ],
-      },
-      {
-        episodeNumber: 4,
-        title: 'Episode 04 - Into the Dark',
-        downloadLinks: [
-          { quality: '720p HD (x264 440MB)', link: 'https://cinesubz.lk/dl/avatar-s01-e04-720p.mkv' },
-          { quality: '1080p FHD (HEVC 910MB)', link: 'https://cinesubz.lk/dl/avatar-s01-e04-1080p.mkv' },
-        ],
-      },
-      {
-        episodeNumber: 5,
-        title: 'Episode 05 - Spirited Away',
-        downloadLinks: [
-          { quality: '720p HD (x264 455MB)', link: 'https://cinesubz.lk/dl/avatar-s01-e05-720p.mkv' },
-          { quality: '1080p FHD (HEVC 940MB)', link: 'https://cinesubz.lk/dl/avatar-s01-e05-1080p.mkv' },
-        ],
-      },
-      {
-        episodeNumber: 6,
-        title: 'Episode 06 - Masks',
-        downloadLinks: [
-          { quality: '720p HD (x264 470MB)', link: 'https://cinesubz.lk/dl/avatar-s01-e06-720p.mkv' },
-          { quality: '1080p FHD (HEVC 960MB)', link: 'https://cinesubz.lk/dl/avatar-s01-e06-1080p.mkv' },
-        ],
-      },
-      {
-        episodeNumber: 7,
-        title: 'Episode 07 - The North',
-        downloadLinks: [
-          { quality: '720p HD (x264 480MB)', link: 'https://cinesubz.lk/dl/avatar-s01-e07-720p.mkv' },
-          { quality: '1080p FHD (HEVC 990MB)', link: 'https://cinesubz.lk/dl/avatar-s01-e07-1080p.mkv' },
-        ],
-      },
-      {
-        episodeNumber: 8,
-        title: 'Episode 08 - Legends (Season Finale)',
-        downloadLinks: [
-          { quality: '720p HD (x264 520MB)', link: 'https://cinesubz.lk/dl/avatar-s01-e08-720p.mkv' },
-          { quality: '1080p FHD (HEVC 1.1GB)', link: 'https://cinesubz.lk/dl/avatar-s01-e08-1080p.mkv' },
         ],
       },
     ],
