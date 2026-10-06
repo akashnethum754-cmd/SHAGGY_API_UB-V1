@@ -19,7 +19,7 @@ app.use(express.json());
 
 // Global Telemetry & Metrics Store
 const serverStartTime = Date.now();
-let totalApiRequests = 16800; // Realistic baseline combined with live increments
+let totalApiRequests = 16800;
 let totalLatencySum = 3800000;
 let userCoins = 50;
 
@@ -30,12 +30,13 @@ const endpointStats: Record<string, { calls: number; latencies: number[] }> = {
   'cinesubz-tv-info': { calls: 2890, latencies: [310, 295, 330] },
 };
 
-// Endpoints Metadata as specified by user
+// Endpoints Metadata
 const API_ENDPOINTS_CATALOG = [
   {
     id: 'cinesubz-search',
     name: 'CineSubz Movie Cinema Search',
-    description: 'Fast search engine for CineSubz Sinhala subtitled & dubbed blockbuster movies with poster thumbnails and metadata.',
+    description:
+      'Fast search engine for CineSubz Sinhala subtitled & dubbed blockbuster movies with poster thumbnails and metadata.',
     category: 'Social & Media',
     endpoint: '/api/v1/movies/cinesubz/search',
     method: 'GET',
@@ -65,7 +66,8 @@ const API_ENDPOINTS_CATALOG = [
         {
           title: 'Spider-Man: Brand New Day (2026) Sinhala Subtitles',
           link: 'https://cinesubz.net/movies/spider-man-brand-new-day-2026-sinhala-subtitles',
-          image: 'https://images.unsplash.com/photo-1604200213928-ba3cf4fc8436?auto=format&fit=crop&w=600&q=80',
+          image:
+            'https://images.unsplash.com/photo-1604200213928-ba3cf4fc8436?auto=format&fit=crop&w=600&q=80',
           type: 'movie',
         },
       ],
@@ -81,7 +83,8 @@ const API_ENDPOINTS_CATALOG = [
   {
     id: 'cinesubz-infodl',
     name: 'CineSubz Movie Info & Direct Download Harvester',
-    description: 'Scrapes complete CineSubz movie info, release year, IMDB ratings, synopsis, runtime, and high-speed direct download links.',
+    description:
+      'Scrapes complete CineSubz movie info, release year, IMDB ratings, synopsis, runtime, and high-speed direct download links.',
     category: 'Social & Media',
     endpoint: '/api/v1/movies/cinesubz/infodl',
     method: 'GET',
@@ -93,8 +96,8 @@ const API_ENDPOINTS_CATALOG = [
         name: 'q',
         type: 'string',
         required: true,
-        description: 'Target CineSubz movie post URL',
-        default: 'https://cinesubz.net/movies/spider-man-brand-new-day-2026-sinhala-subtitles',
+        description: 'CineSubz movie search keyword OR direct post URL',
+        default: 'spiderman',
         in: 'query',
       },
     ],
@@ -113,7 +116,7 @@ const API_ENDPOINTS_CATALOG = [
           {
             title: 'Direct Fast Download (1080p)',
             quality: '1080p FHD',
-            link: 'https://cinesubz.net/dl/spiderman-bnd-1080p-sinhala-sub.mkv',
+            link: 'https://cinesubz.net/movies/spider-man-brand-new-day-2026-sinhala-subtitles',
           },
         ],
       },
@@ -129,7 +132,8 @@ const API_ENDPOINTS_CATALOG = [
   {
     id: 'cinesubz-tv-search',
     name: 'CineSubz TV Series Search Engine',
-    description: 'Searches for all Sinhala subtitled and dubbed TV shows, anime, drama series, seasons, and episodes on CineSubz.',
+    description:
+      'Searches for all Sinhala subtitled and dubbed TV shows, anime, drama series, seasons, and episodes on CineSubz.',
     category: 'Social & Media',
     endpoint: '/api/v1/movies/cinesubz/tv/search',
     method: 'GET',
@@ -159,7 +163,8 @@ const API_ENDPOINTS_CATALOG = [
         {
           title: 'Avatar: The Last Airbender (2024) TV Series',
           link: 'https://cinesubz.lk/tvshows/avatar-the-last-airbender-2024-tv-s01/',
-          image: 'https://images.unsplash.com/photo-1578632767115-351597cf2477?auto=format&fit=crop&w=600&q=80',
+          image:
+            'https://images.unsplash.com/photo-1578632767115-351597cf2477?auto=format&fit=crop&w=600&q=80',
           type: 'tvshows',
         },
       ],
@@ -175,7 +180,8 @@ const API_ENDPOINTS_CATALOG = [
   {
     id: 'cinesubz-tv-info',
     name: 'CineSubz TV Series Info & Episode Streams',
-    description: 'Fetches TV show seasons, cast list, episode index, descriptions, and direct streaming/download links per episode.',
+    description:
+      'Fetches TV show seasons, cast list, episode index, descriptions, and direct streaming/download links per episode.',
     category: 'Social & Media',
     endpoint: '/api/v1/movies/cinesubz/tv/info',
     method: 'GET',
@@ -187,8 +193,8 @@ const API_ENDPOINTS_CATALOG = [
         name: 'q',
         type: 'string',
         required: true,
-        description: 'Target CineSubz TV show URL',
-        default: 'https://cinesubz.lk/tvshows/avatar-the-last-airbender-2024-tv-s01/',
+        description: 'CineSubz TV show search keyword OR direct URL',
+        default: 'Avatar',
         in: 'query',
       },
     ],
@@ -230,7 +236,7 @@ function formatUptime(seconds: number): string {
   return parts.join(' ');
 }
 
-// 1. System stats route: live RAM, CPU, Date/Time, Requests, Health
+// 1. System stats route
 app.get('/api/system/stats', (_req: Request, res: Response) => {
   const mem = process.memoryUsage();
   const totalMem = os.totalmem();
@@ -240,7 +246,6 @@ app.get('/api/system/stats', (_req: Request, res: Response) => {
   const osUptimeSec = Math.floor(os.uptime());
   const now = new Date();
 
-  // Sri Lanka time (Asia/Colombo UTC+5:30)
   const colomboTime = new Intl.DateTimeFormat('en-US', {
     timeZone: 'Asia/Colombo',
     dateStyle: 'full',
@@ -311,7 +316,7 @@ app.get('/api/v1/endpoints', (_req: Request, res: Response) => {
     endpoints: API_ENDPOINTS_CATALOG.map((ep) => ({
       ...ep,
       remainingCoins: userCoins,
-      totalCalls: (endpointStats[ep.id]?.calls || ep.totalCalls),
+      totalCalls: endpointStats[ep.id]?.calls || ep.totalCalls,
     })),
   });
 });
@@ -327,7 +332,6 @@ app.post('/api/user/coins/reset', (_req: Request, res: Response) => {
 });
 
 // 4. CineSubz Movie Search Endpoint
-// GET /api/v1/movies/cinesubz/search?q=new
 app.get('/api/v1/movies/cinesubz/search', async (req: Request, res: Response) => {
   const start = Date.now();
   const q = (req.query.q as string) || 'new';
@@ -367,15 +371,22 @@ app.get('/api/v1/movies/cinesubz/search', async (req: Request, res: Response) =>
 });
 
 // 5. CineSubz Movie Info & Direct Download Harvester
-// GET /api/v1/movies/cinesubz/infodl?q=https://...
+// FIXED: if q is not a URL, convert it to CineSubz search URL first
 app.get('/api/v1/movies/cinesubz/infodl', async (req: Request, res: Response) => {
   const start = Date.now();
-  const q = (req.query.q as string) || 'https://cinesubz.net/movies/spider-man-brand-new-day-2026-sinhala-subtitles';
+  const rawQ = (req.query.q as string) || 'spiderman';
+
+  // Convert plain query → CineSubz search URL
+  const targetUrl = rawQ.startsWith('http')
+    ? rawQ
+    : `https://cinesubz.net/?s=${encodeURIComponent(rawQ)}`;
+
+  console.log('[/infodl] rawQ:', rawQ, '| targetUrl:', targetUrl);
 
   totalApiRequests++;
 
   try {
-    const movie = await scrapeCineSubzMovieInfo(q);
+    const movie = await scrapeCineSubzMovieInfo(targetUrl);
     const latencyMs = Date.now() - start;
     totalLatencySum += latencyMs;
 
@@ -384,6 +395,11 @@ app.get('/api/v1/movies/cinesubz/infodl', async (req: Request, res: Response) =>
     }
     endpointStats['cinesubz-infodl'].calls++;
     endpointStats['cinesubz-infodl'].latencies.push(latencyMs);
+
+    console.log('[/infodl] downloads:', movie.downloads.length);
+    movie.downloads.forEach((d, i) =>
+      console.log(`  [${i}] ${d.quality} -> ${d.link}`)
+    );
 
     res.json({
       success: true,
@@ -395,6 +411,7 @@ app.get('/api/v1/movies/cinesubz/infodl', async (req: Request, res: Response) =>
     });
   } catch (error: any) {
     const latencyMs = Date.now() - start;
+    console.error('[/infodl] error:', error);
     res.status(500).json({
       success: false,
       status: 500,
@@ -405,7 +422,6 @@ app.get('/api/v1/movies/cinesubz/infodl', async (req: Request, res: Response) =>
 });
 
 // 6. CineSubz TV Series Search Engine
-// GET /api/v1/movies/cinesubz/tv/search?q=Avatar
 app.get('/api/v1/movies/cinesubz/tv/search', async (req: Request, res: Response) => {
   const start = Date.now();
   const q = (req.query.q as string) || 'Avatar';
@@ -445,15 +461,21 @@ app.get('/api/v1/movies/cinesubz/tv/search', async (req: Request, res: Response)
 });
 
 // 7. CineSubz TV Series Info & Episode Streams
-// GET /api/v1/movies/cinesubz/tv/info?q=https://...
+// FIXED: same URL conversion logic
 app.get('/api/v1/movies/cinesubz/tv/info', async (req: Request, res: Response) => {
   const start = Date.now();
-  const q = (req.query.q as string) || 'https://cinesubz.lk/tvshows/avatar-the-last-airbender-2024-tv-s01/';
+  const rawQ = (req.query.q as string) || 'Avatar';
+
+  const targetUrl = rawQ.startsWith('http')
+    ? rawQ
+    : `https://cinesubz.net/?s=${encodeURIComponent(rawQ)}`;
+
+  console.log('[/tv/info] rawQ:', rawQ, '| targetUrl:', targetUrl);
 
   totalApiRequests++;
 
   try {
-    const series = await scrapeCineSubzTVInfo(q);
+    const series = await scrapeCineSubzTVInfo(targetUrl);
     const latencyMs = Date.now() - start;
     totalLatencySum += latencyMs;
 
@@ -473,6 +495,7 @@ app.get('/api/v1/movies/cinesubz/tv/info', async (req: Request, res: Response) =
     });
   } catch (error: any) {
     const latencyMs = Date.now() - start;
+    console.error('[/tv/info] error:', error);
     res.status(500).json({
       success: false,
       status: 500,
