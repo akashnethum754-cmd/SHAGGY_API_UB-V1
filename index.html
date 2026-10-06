@@ -1,18 +1,289 @@
 <!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0a0a0f" />
 
-<html lang="en">  
-  <head>  
-    <meta charset="UTF-8" />  
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />  
-    <title>readyAPI - CineSubz Scraper Platform & Playground</title>  
-    <meta name="description" content="readyAPI high-performance CineSubz Movie & TV scraper API hub with live RAM usage, system diagnostics, and interactive playground." />  
-    <meta property="og:title" content="readyAPI - CineSubz Scraper Platform & Playground" />  
-    <meta property="og:description" content="readyAPI high-performance CineSubz Movie & TV scraper API hub with live RAM usage, system diagnostics, and interactive playground." />  
-    <meta property="og:type" content="website" />  
-    <meta name="twitter:card" content="summary_large_image" />  
-  </head>  
-  <body>  
-    <div id="root"></div>  
-    <script type="module" src="/src/main.tsx"></script>  
-  </body>  
-</html>  
+    <!-- ===== Primary Meta Tags ===== -->
+    <title>readyAPI — CineSubz Scraper Platform & Developer Playground</title>
+    <meta
+      name="title"
+      content="readyAPI — CineSubz Scraper Platform & Developer Playground"
+    />
+    <meta
+      name="description"
+      content="Blazing-fast CineSubz Movie & TV scraper API with Sinhala subtitles. Live system diagnostics, RAM usage, latency metrics, and an interactive playground for developers."
+    />
+    <meta
+      name="keywords"
+      content="readyAPI, CineSubz, Sinhala Subtitles, Movie API, TV Series API, Scraper, Developer API, Sri Lanka, Sinhala Movies, CineSubz.lk, Movie Download API"
+    />
+    <meta name="author" content="Chamindu / readyAPI" />
+    <meta name="robots" content="index, follow" />
+
+    <!-- ===== Open Graph / Facebook ===== -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://buy-app-3.herokuapp.com/" />
+    <meta
+      property="og:title"
+      content="readyAPI — CineSubz Scraper Platform & Developer Playground"
+    />
+    <meta
+      property="og:description"
+      content="Blazing-fast CineSubz Movie & TV scraper API with Sinhala subtitles. Live RAM usage, system diagnostics, and an interactive playground."
+    />
+    <meta
+      property="og:image"
+      content="https://images.unsplash.com/photo-1536440136628-849c177e76a1?auto=format&fit=crop&w=1200&h=630&q=80"
+    />
+    <meta property="og:site_name" content="readyAPI" />
+
+    <!-- ===== Twitter ===== -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:url" content="https://buy-app-3.herokuapp.com/" />
+    <meta
+      name="twitter:title"
+      content="readyAPI — CineSubz Scraper Platform & Developer Playground"
+    />
+    <meta
+      name="twitter:description"
+      content="Blazing-fast CineSubz Movie & TV scraper API with Sinhala subtitles. Live system diagnostics + interactive playground."
+    />
+    <meta
+      name="twitter:image"
+      content="https://images.unsplash.com/photo-1536440136628-849c177e76a1?auto=format&fit=crop&w=1200&h=630&q=80"
+    />
+
+    <!-- ===== Favicon (inline SVG — no extra files needed) ===== -->
+    <link
+      rel="icon"
+      type="image/svg+xml"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%23e11d48'/%3E%3Ctext x='50' y='68' font-size='58' font-family='Arial,Helvetica,sans-serif' font-weight='900' fill='white' text-anchor='middle'%3ER%3C/text%3E%3C/svg%3E"
+    />
+
+    <!-- ===== Apple touch icon ===== -->
+    <link
+      rel="apple-touch-icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%23e11d48'/%3E%3Ctext x='50' y='68' font-size='58' font-family='Arial,Helvetica,sans-serif' font-weight='900' fill='white' text-anchor='middle'%3ER%3C/text%3E%3C/svg%3E"
+    />
+
+    <!-- ===== Structured Data (SEO boost) ===== -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "name": "readyAPI",
+        "alternateName": "CineSubz Scraper Platform",
+        "url": "https://buy-app-3.herokuapp.com/",
+        "description": "Blazing-fast CineSubz Movie & TV scraper API with Sinhala subtitles. Live system diagnostics and an interactive playground for developers.",
+        "applicationCategory": "DeveloperApplication",
+        "operatingSystem": "Web",
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "USD"
+        },
+        "author": {
+          "@type": "Person",
+          "name": "Chamindu"
+        }
+      }
+    </script>
+
+    <!-- ===== Preconnect for performance ===== -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap"
+      rel="stylesheet"
+    />
+
+    <!-- ===== Initial page background (prevents white flash) ===== -->
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background: #0a0a0f;
+        color: #e5e7eb;
+        font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto,
+          'Helvetica Neue', Arial, sans-serif;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+      }
+
+      /* Loading splash — removed automatically once React mounts */
+      #initial-splash {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 20px;
+        z-index: 9999;
+        background: radial-gradient(
+            circle at 50% 40%,
+            rgba(225, 29, 72, 0.18),
+            transparent 60%
+          ),
+          #0a0a0f;
+        transition: opacity 0.4s ease;
+      }
+
+      #initial-splash.hidden {
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      .splash-logo {
+        font-size: 42px;
+        font-weight: 900;
+        letter-spacing: -1.5px;
+        background: linear-gradient(135deg, #e11d48, #f43f5e, #fb7185);
+        -webkit-background-clip: text;
+        background-clip: text;
+        -webkit-text-fill-color: transparent;
+        animation: pulse 1.6s ease-in-out infinite;
+      }
+
+      .splash-sub {
+        font-size: 12px;
+        letter-spacing: 3px;
+        text-transform: uppercase;
+        color: #71717a;
+        font-weight: 500;
+      }
+
+      .splash-bar {
+        width: 180px;
+        height: 3px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.06);
+        overflow: hidden;
+        position: relative;
+      }
+
+      .splash-bar::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        width: 40%;
+        border-radius: 999px;
+        background: linear-gradient(90deg, #e11d48, #fb7185);
+        animation: slide 1.2s ease-in-out infinite;
+      }
+
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 1;
+          transform: scale(1);
+        }
+        50% {
+          opacity: 0.75;
+          transform: scale(0.97);
+        }
+      }
+
+      @keyframes slide {
+        0% {
+          transform: translateX(-100%);
+        }
+        100% {
+          transform: translateX(350%);
+        }
+      }
+
+      /* Hide splash when JS is disabled or React has taken over */
+      .js-loaded #initial-splash {
+        display: none;
+      }
+    </style>
+  </head>
+
+  <body>
+    <!-- ===== SEO fallback content (hidden until JS loads, for crawlers) ===== -->
+    <noscript>
+      <div
+        style="
+          padding: 40px;
+          max-width: 720px;
+          margin: 0 auto;
+          font-family: Arial, sans-serif;
+          color: #e5e7eb;
+        "
+      >
+        <h1 style="color: #e11d48">readyAPI — CineSubz Scraper Platform</h1>
+        <p>
+          Blazing-fast CineSubz Movie &amp; TV scraper API with Sinhala
+          subtitles. Live system diagnostics, RAM usage, latency metrics, and an
+          interactive playground.
+        </p>
+        <p>
+          ⚠️ JavaScript is required to use the interactive playground. Please
+          enable JavaScript in your browser.
+        </p>
+        <h3>Available Endpoints</h3>
+        <ul>
+          <li><code>GET /api/system/stats</code> — Live system diagnostics</li>
+          <li>
+            <code>GET /api/v1/movies/cinesubz/search?q=spiderman</code> — Movie
+            search
+          </li>
+          <li>
+            <code>GET /api/v1/movies/cinesubz/infodl?q=spiderman</code> — Movie
+            info + downloads
+          </li>
+          <li>
+            <code>GET /api/v1/movies/cinesubz/tv/search?q=avatar</code> — TV
+            series search
+          </li>
+          <li>
+            <code>GET /api/v1/movies/cinesubz/tv/info?q=avatar</code> — TV
+            series info
+          </li>
+        </ul>
+      </div>
+    </noscript>
+
+    <!-- ===== Loading splash (visible until React mounts) ===== -->
+    <div id="initial-splash">
+      <div class="splash-logo">readyAPI</div>
+      <div class="splash-sub">Booting Engine</div>
+      <div class="splash-bar"></div>
+    </div>
+
+    <!-- ===== React Mount Point ===== -->
+    <div id="root"></div>
+
+    <!-- ===== App Entry ===== -->
+    <script type="module" src="/src/main.tsx"></script>
+
+    <!-- ===== Hide splash once app is ready ===== -->
+    <script>
+      // Hide splash after a small delay or when React takes over
+      const hideSplash = () => {
+        const el = document.getElementById('initial-splash');
+        if (el) {
+          el.classList.add('hidden');
+          setTimeout(() => el.remove(), 500);
+        }
+      };
+
+      // Try after DOMContentLoaded + a short delay
+      window.addEventListener('load', () => setTimeout(hideSplash, 900));
+
+      // Safety net: if React root has children, hide immediately
+      const observer = new MutationObserver(() => {
+        const root = document.getElementById('root');
+        if (root && root.children.length > 0) {
+          hideSplash();
+          observer.disconnect();
+        }
+      });
+      observer.observe(document.body, { childList: true, subtree: true });
+    </script>
+  </body>
+</html>
