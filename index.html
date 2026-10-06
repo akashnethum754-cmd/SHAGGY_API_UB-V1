@@ -2,17 +2,237 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>readyAPI - CineSubz Scraper Platform & Playground</title>
-    <meta name="description" content="readyAPI high-performance CineSubz Movie & TV scraper API hub with live RAM usage, system diagnostics, and interactive playground." />
-    <meta property="og:title" content="readyAPI - CineSubz Scraper Platform & Playground" />
-    <meta property="og:description" content="readyAPI high-performance CineSubz Movie & TV scraper API hub with live RAM usage, system diagnostics, and interactive playground." />
-    <meta property="og:type" content="website" />
-    <meta name="twitter:card" content="summary_large_image" />
+
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0"
+    />
+
+    <title>readyAPI — CineSubz Scraper Platform</title>
+
+    <meta
+      name="description"
+      content="readyAPI high-performance CineSubz Movie & TV scraper API hub with live RAM usage, system diagnostics, and interactive playground."
+    />
+
+    <meta
+      name="theme-color"
+      content="#05050a"
+    />
+
+    <meta
+      name="color-scheme"
+      content="dark"
+    />
+
+    <!-- Open Graph -->
+    <meta
+      property="og:title"
+      content="readyAPI — CineSubz Scraper Platform"
+    />
+    <meta
+      property="og:description"
+      content="High-performance Movie & TV scraper API hub with live system diagnostics and interactive API playground."
+    />
+    <meta
+      property="og:type"
+      content="website"
+    />
+
+    <!-- Twitter -->
+    <meta
+      name="twitter:card"
+      content="summary_large_image"
+    />
+    <meta
+      name="twitter:title"
+      content="readyAPI — CineSubz Scraper Platform"
+    />
+    <meta
+      name="twitter:description"
+      content="High-performance Movie & TV scraper API hub with live system diagnostics and interactive API playground."
+    />
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+
+    <!-- Favicon -->
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%2305050a'/%3E%3Cpath d='M25 50h50M50 25v50' stroke='%2300f5ff' stroke-width='8' stroke-linecap='round'/%3E%3Ccircle cx='50' cy='50' r='28' fill='none' stroke='%2300f5ff' stroke-width='4' opacity='.5'/%3E%3C/svg%3E"
+    />
+
+    <style>
+      :root {
+        --neon-cyan: #00f5ff;
+        --neon-blue: #008cff;
+        --neon-purple: #9b5cff;
+        --neon-pink: #ff2bd6;
+        --bg: #05050a;
+        --bg2: #080812;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        background: var(--bg);
+        color-scheme: dark;
+      }
+
+      body {
+        margin: 0;
+        min-width: 320px;
+        min-height: 100vh;
+        background:
+          radial-gradient(
+            circle at 15% 15%,
+            rgba(0, 245, 255, 0.08),
+            transparent 28%
+          ),
+          radial-gradient(
+            circle at 85% 20%,
+            rgba(155, 92, 255, 0.08),
+            transparent 30%
+          ),
+          radial-gradient(
+            circle at 50% 100%,
+            rgba(0, 140, 255, 0.06),
+            transparent 35%
+          ),
+          var(--bg);
+
+        font-family: "Inter", sans-serif;
+        -webkit-font-smoothing: antialiased;
+        text-rendering: optimizeLegibility;
+        overflow-x: hidden;
+      }
+
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        z-index: 9999;
+
+        background-image:
+          linear-gradient(
+            rgba(0, 245, 255, 0.018) 1px,
+            transparent 1px
+          ),
+          linear-gradient(
+            90deg,
+            rgba(0, 245, 255, 0.018) 1px,
+            transparent 1px
+          );
+
+        background-size: 40px 40px;
+
+        mask-image: linear-gradient(
+          to bottom,
+          black,
+          transparent 90%
+        );
+      }
+
+      body::after {
+        content: "";
+        position: fixed;
+        width: 500px;
+        height: 500px;
+        left: 50%;
+        top: -250px;
+        transform: translateX(-50%);
+        pointer-events: none;
+
+        background: radial-gradient(
+          circle,
+          rgba(0, 245, 255, 0.08),
+          transparent 65%
+        );
+
+        filter: blur(30px);
+      }
+
+      #root {
+        min-height: 100vh;
+        position: relative;
+        z-index: 1;
+      }
+
+      button,
+      input,
+      textarea,
+      select {
+        font: inherit;
+      }
+
+      ::selection {
+        background: rgba(0, 245, 255, 0.25);
+        color: white;
+      }
+
+      ::-webkit-scrollbar {
+        width: 7px;
+        height: 7px;
+      }
+
+      ::-webkit-scrollbar-track {
+        background: #05050a;
+      }
+
+      ::-webkit-scrollbar-thumb {
+        background: linear-gradient(
+          180deg,
+          var(--neon-cyan),
+          var(--neon-purple)
+        );
+        border-radius: 999px;
+      }
+
+      ::-webkit-scrollbar-thumb:hover {
+        background: var(--neon-cyan);
+      }
+
+      .neon-text {
+        color: var(--neon-cyan);
+        text-shadow:
+          0 0 8px rgba(0, 245, 255, 0.8),
+          0 0 24px rgba(0, 245, 255, 0.35);
+      }
+
+      .neon-border {
+        border: 1px solid rgba(0, 245, 255, 0.35);
+        box-shadow:
+          0 0 15px rgba(0, 245, 255, 0.08),
+          inset 0 0 20px rgba(0, 245, 255, 0.025);
+      }
+
+      .mono {
+        font-family: "JetBrains Mono", monospace;
+      }
+
+      @media (max-width: 640px) {
+        body::before {
+          background-size: 28px 28px;
+        }
+      }
+    </style>
   </head>
+
   <body>
     <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
+
+    <script
+      type="module"
+      src="/src/main.tsx"
+    ></script>
   </body>
 </html>
-
