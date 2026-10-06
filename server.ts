@@ -17,7 +17,7 @@ const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
 
-// Global Telemetry & Metrics Store
+// ---------- Telemetry ----------
 const serverStartTime = Date.now();
 let totalApiRequests = 16800;
 let totalLatencySum = 3800000;
@@ -30,7 +30,6 @@ const endpointStats: Record<string, { calls: number; latencies: number[] }> = {
   'cinesubz-tv-info': { calls: 2890, latencies: [310, 295, 330] },
 };
 
-// Endpoints Metadata
 const API_ENDPOINTS_CATALOG = [
   {
     id: 'cinesubz-search',
@@ -53,25 +52,6 @@ const API_ENDPOINTS_CATALOG = [
         in: 'query',
       },
     ],
-    sampleResponse: {
-      success: true,
-      status: 200,
-      query: 'new',
-      provider: 'cinesubz',
-      totalResults: 10,
-      coinCost: 2,
-      remainingCoins: 48,
-      latencyMs: 210,
-      results: [
-        {
-          title: 'Spider-Man: Brand New Day (2026) Sinhala Subtitles',
-          link: 'https://cinesubz.net/movies/spider-man-brand-new-day-2026-sinhala-subtitles',
-          image:
-            'https://images.unsplash.com/photo-1604200213928-ba3cf4fc8436?auto=format&fit=crop&w=600&q=80',
-          type: 'movie',
-        },
-      ],
-    },
     scraperType: 'builtin',
     status: 'active',
     totalCalls: 5120,
@@ -84,7 +64,7 @@ const API_ENDPOINTS_CATALOG = [
     id: 'cinesubz-infodl',
     name: 'CineSubz Movie Info & Direct Download Harvester',
     description:
-      'Scrapes complete CineSubz movie info, release year, IMDB ratings, synopsis, runtime, and high-speed direct download links.',
+      'Scrapes complete CineSubz movie info, cast, gallery, ratings, synopsis, and high-speed direct download links.',
     category: 'Social & Media',
     endpoint: '/api/v1/movies/cinesubz/infodl',
     method: 'GET',
@@ -96,31 +76,11 @@ const API_ENDPOINTS_CATALOG = [
         name: 'q',
         type: 'string',
         required: true,
-        description: 'CineSubz movie search keyword OR direct post URL',
+        description: 'Movie search keyword OR direct CineSubz post URL',
         default: 'spiderman',
         in: 'query',
       },
     ],
-    sampleResponse: {
-      success: true,
-      status: 200,
-      provider: 'cinesubz',
-      coinCost: 3,
-      remainingCoins: 45,
-      latencyMs: 290,
-      movie: {
-        title: 'Spider-Man: Brand New Day (2026)',
-        year: '2026',
-        genre: 'Action, Adventure, Sci-Fi',
-        downloads: [
-          {
-            title: 'Direct Fast Download (1080p)',
-            quality: '1080p FHD',
-            link: 'https://cinesubz.net/movies/spider-man-brand-new-day-2026-sinhala-subtitles',
-          },
-        ],
-      },
-    },
     scraperType: 'builtin',
     status: 'active',
     totalCalls: 4340,
@@ -150,25 +110,6 @@ const API_ENDPOINTS_CATALOG = [
         in: 'query',
       },
     ],
-    sampleResponse: {
-      success: true,
-      status: 200,
-      query: 'Avatar',
-      provider: 'cinesubz_tv',
-      totalResults: 5,
-      coinCost: 2,
-      remainingCoins: 48,
-      latencyMs: 230,
-      results: [
-        {
-          title: 'Avatar: The Last Airbender (2024) TV Series',
-          link: 'https://cinesubz.lk/tvshows/avatar-the-last-airbender-2024-tv-s01/',
-          image:
-            'https://images.unsplash.com/photo-1578632767115-351597cf2477?auto=format&fit=crop&w=600&q=80',
-          type: 'tvshows',
-        },
-      ],
-    },
     scraperType: 'builtin',
     status: 'active',
     totalCalls: 3620,
@@ -193,25 +134,11 @@ const API_ENDPOINTS_CATALOG = [
         name: 'q',
         type: 'string',
         required: true,
-        description: 'CineSubz TV show search keyword OR direct URL',
+        description: 'TV series keyword OR direct CineSubz URL',
         default: 'Avatar',
         in: 'query',
       },
     ],
-    sampleResponse: {
-      success: true,
-      status: 200,
-      provider: 'cinesubz_tv',
-      coinCost: 3,
-      remainingCoins: 45,
-      latencyMs: 310,
-      series: {
-        title: 'Avatar: The Last Airbender (2024)',
-        year: '2024',
-        genre: 'Action, Adventure, Fantasy',
-        episodesCount: 8,
-      },
-    },
     scraperType: 'builtin',
     status: 'active',
     totalCalls: 2890,
@@ -222,7 +149,7 @@ const API_ENDPOINTS_CATALOG = [
   },
 ];
 
-// Helper: Format uptime into human readable string
+// ---------- Helpers ----------
 function formatUptime(seconds: number): string {
   const d = Math.floor(seconds / (3600 * 24));
   const h = Math.floor((seconds % (3600 * 24)) / 3600);
@@ -236,7 +163,9 @@ function formatUptime(seconds: number): string {
   return parts.join(' ');
 }
 
-// 1. System stats route
+// ============================================================
+//  1. System Stats
+// ============================================================
 app.get('/api/system/stats', (_req: Request, res: Response) => {
   const mem = process.memoryUsage();
   const totalMem = os.totalmem();
@@ -252,12 +181,7 @@ app.get('/api/system/stats', (_req: Request, res: Response) => {
     timeStyle: 'medium',
   }).format(now);
 
-  const utcTime = now.toUTCString();
-  const isoTime = now.toISOString();
-
   const cpus = os.cpus();
-  const loadAvg = os.loadavg();
-
   const avgLatency = Math.round(totalLatencySum / Math.max(1, totalApiRequests));
 
   res.json({
@@ -270,23 +194,23 @@ app.get('/api/system/stats', (_req: Request, res: Response) => {
       arch: os.arch(),
       cpuModel: cpus[0]?.model || 'Cloud vCPU',
       cpuCores: cpus.length,
-      loadAverage: loadAvg,
+      loadAverage: os.loadavg(),
     },
     dateTime: {
       timestamp: now.getTime(),
-      iso: isoTime,
-      utc: utcTime,
+      iso: now.toISOString(),
+      utc: now.toUTCString(),
       sriLankaFormatted: colomboTime,
       timezone: 'Asia/Colombo (UTC+05:30)',
     },
     ramUsage: {
-      processRssMb: +(mem.rss / (1024 * 1024)).toFixed(2),
-      processHeapTotalMb: +(mem.heapTotal / (1024 * 1024)).toFixed(2),
-      processHeapUsedMb: +(mem.heapUsed / (1024 * 1024)).toFixed(2),
-      processExternalMb: +(mem.external / (1024 * 1024)).toFixed(2),
-      systemTotalMb: +(totalMem / (1024 * 1024)).toFixed(2),
-      systemFreeMb: +(freeMem / (1024 * 1024)).toFixed(2),
-      systemUsedMb: +(usedMem / (1024 * 1024)).toFixed(2),
+      processRssMb: +(mem.rss / 1048576).toFixed(2),
+      processHeapTotalMb: +(mem.heapTotal / 1048576).toFixed(2),
+      processHeapUsedMb: +(mem.heapUsed / 1048576).toFixed(2),
+      processExternalMb: +(mem.external / 1048576).toFixed(2),
+      systemTotalMb: +(totalMem / 1048576).toFixed(2),
+      systemFreeMb: +(freeMem / 1048576).toFixed(2),
+      systemUsedMb: +(usedMem / 1048576).toFixed(2),
       systemUsagePercent: +((usedMem / totalMem) * 100).toFixed(1),
       heapUsagePercent: +((mem.heapUsed / mem.heapTotal) * 100).toFixed(1),
     },
@@ -308,7 +232,9 @@ app.get('/api/system/stats', (_req: Request, res: Response) => {
   });
 });
 
-// 2. Endpoints Catalog
+// ============================================================
+//  2. Endpoints Catalog
+// ============================================================
 app.get('/api/v1/endpoints', (_req: Request, res: Response) => {
   res.json({
     success: true,
@@ -321,7 +247,9 @@ app.get('/api/v1/endpoints', (_req: Request, res: Response) => {
   });
 });
 
-// 3. User coins reset
+// ============================================================
+//  3. Coins Reset
+// ============================================================
 app.post('/api/user/coins/reset', (_req: Request, res: Response) => {
   userCoins = 50;
   res.json({
@@ -331,11 +259,12 @@ app.post('/api/user/coins/reset', (_req: Request, res: Response) => {
   });
 });
 
-// 4. CineSubz Movie Search Endpoint
+// ============================================================
+//  4. CineSubz Movie Search
+// ============================================================
 app.get('/api/v1/movies/cinesubz/search', async (req: Request, res: Response) => {
   const start = Date.now();
   const q = (req.query.q as string) || 'new';
-
   totalApiRequests++;
 
   try {
@@ -343,89 +272,75 @@ app.get('/api/v1/movies/cinesubz/search', async (req: Request, res: Response) =>
     const latencyMs = Date.now() - start;
     totalLatencySum += latencyMs;
 
-    if (!endpointStats['cinesubz-search']) {
+    if (!endpointStats['cinesubz-search'])
       endpointStats['cinesubz-search'] = { calls: 0, latencies: [] };
-    }
     endpointStats['cinesubz-search'].calls++;
     endpointStats['cinesubz-search'].latencies.push(latencyMs);
 
     res.json({
-      success: true,
-      status: 200,
+      status: true,
+      creator: '@Chamindu',
+      site: 'cinesubz',
       query: q,
-      provider: 'cinesubz',
-      totalResults: results.length,
-      unlimitedFree: true,
-      latencyMs,
-      results,
+      data: results,
     });
   } catch (error: any) {
-    const latencyMs = Date.now() - start;
     res.status(500).json({
-      success: false,
-      status: 500,
-      error: error.message || 'Scraper execution error',
-      latencyMs,
+      status: false,
+      statusCode: 500,
+      error: error.message || 'Scraper error',
     });
   }
 });
 
-// 5. CineSubz Movie Info & Direct Download Harvester
-// FIXED: if q is not a URL, convert it to CineSubz search URL first
+// ============================================================
+//  5. CineSubz Movie Info + Downloads
+// ============================================================
 app.get('/api/v1/movies/cinesubz/infodl', async (req: Request, res: Response) => {
   const start = Date.now();
-  const rawQ = (req.query.q as string) || 'spiderman';
-
-  // Convert plain query → CineSubz search URL
-  const targetUrl = rawQ.startsWith('http')
-    ? rawQ
-    : `https://cinesubz.net/?s=${encodeURIComponent(rawQ)}`;
-
-  console.log('[/infodl] rawQ:', rawQ, '| targetUrl:', targetUrl);
-
+  const rawQ = ((req.query.q as string) || 'spiderman').trim();
   totalApiRequests++;
 
+  console.log('[/infodl] rawQ:', rawQ);
+
   try {
-    const movie = await scrapeCineSubzMovieInfo(targetUrl);
+    const movie = await scrapeCineSubzMovieInfo(rawQ);
     const latencyMs = Date.now() - start;
     totalLatencySum += latencyMs;
 
-    if (!endpointStats['cinesubz-infodl']) {
+    if (!endpointStats['cinesubz-infodl'])
       endpointStats['cinesubz-infodl'] = { calls: 0, latencies: [] };
-    }
     endpointStats['cinesubz-infodl'].calls++;
     endpointStats['cinesubz-infodl'].latencies.push(latencyMs);
 
     console.log('[/infodl] downloads:', movie.downloads.length);
-    movie.downloads.forEach((d, i) =>
-      console.log(`  [${i}] ${d.quality} -> ${d.link}`)
-    );
+    movie.downloads.slice(0, 5).forEach((d, i) => {
+      console.log(`  [${i}] ${d.quality} | ${d.size} -> ${d.link}`);
+    });
 
     res.json({
-      success: true,
-      status: 200,
-      provider: 'cinesubz',
-      unlimitedFree: true,
-      latencyMs,
-      movie,
+      status: true,
+      creator: '@Chamindu',
+      site: 'cinesubz',
+      url: movie.sourceUrl || rawQ,
+      data: movie,
     });
   } catch (error: any) {
-    const latencyMs = Date.now() - start;
     console.error('[/infodl] error:', error);
     res.status(500).json({
-      success: false,
-      status: 500,
+      status: false,
+      statusCode: 500,
       error: error.message || 'Scraper harvest error',
-      latencyMs,
     });
   }
 });
 
-// 6. CineSubz TV Series Search Engine
+// ============================================================
+//  6. CineSubz TV Search
+// ============================================================
 app.get('/api/v1/movies/cinesubz/tv/search', async (req: Request, res: Response) => {
   const start = Date.now();
   const q = (req.query.q as string) || 'Avatar';
-
   totalApiRequests++;
 
   try {
@@ -433,79 +348,67 @@ app.get('/api/v1/movies/cinesubz/tv/search', async (req: Request, res: Response)
     const latencyMs = Date.now() - start;
     totalLatencySum += latencyMs;
 
-    if (!endpointStats['cinesubz-tv-search']) {
+    if (!endpointStats['cinesubz-tv-search'])
       endpointStats['cinesubz-tv-search'] = { calls: 0, latencies: [] };
-    }
     endpointStats['cinesubz-tv-search'].calls++;
     endpointStats['cinesubz-tv-search'].latencies.push(latencyMs);
 
     res.json({
-      success: true,
-      status: 200,
+      status: true,
+      creator: '@Chamindu',
+      site: 'cinesubz',
       query: q,
-      provider: 'cinesubz_tv',
-      totalResults: results.length,
-      unlimitedFree: true,
-      latencyMs,
-      results,
+      data: results,
     });
   } catch (error: any) {
-    const latencyMs = Date.now() - start;
     res.status(500).json({
-      success: false,
-      status: 500,
+      status: false,
+      statusCode: 500,
       error: error.message || 'TV Search error',
-      latencyMs,
     });
   }
 });
 
-// 7. CineSubz TV Series Info & Episode Streams
-// FIXED: same URL conversion logic
+// ============================================================
+//  7. CineSubz TV Info
+// ============================================================
 app.get('/api/v1/movies/cinesubz/tv/info', async (req: Request, res: Response) => {
   const start = Date.now();
-  const rawQ = (req.query.q as string) || 'Avatar';
-
-  const targetUrl = rawQ.startsWith('http')
-    ? rawQ
-    : `https://cinesubz.net/?s=${encodeURIComponent(rawQ)}`;
-
-  console.log('[/tv/info] rawQ:', rawQ, '| targetUrl:', targetUrl);
-
+  const rawQ = ((req.query.q as string) || 'Avatar').trim();
   totalApiRequests++;
 
+  console.log('[/tv/info] rawQ:', rawQ);
+
   try {
-    const series = await scrapeCineSubzTVInfo(targetUrl);
+    const series = await scrapeCineSubzTVInfo(rawQ);
     const latencyMs = Date.now() - start;
     totalLatencySum += latencyMs;
 
-    if (!endpointStats['cinesubz-tv-info']) {
+    if (!endpointStats['cinesubz-tv-info'])
       endpointStats['cinesubz-tv-info'] = { calls: 0, latencies: [] };
-    }
     endpointStats['cinesubz-tv-info'].calls++;
     endpointStats['cinesubz-tv-info'].latencies.push(latencyMs);
 
     res.json({
-      success: true,
-      status: 200,
-      provider: 'cinesubz_tv',
-      unlimitedFree: true,
-      latencyMs,
-      series,
+      status: true,
+      creator: '@Chamindu',
+      site: 'cinesubz',
+      url: series.sourceUrl || rawQ,
+      data: series,
     });
   } catch (error: any) {
-    const latencyMs = Date.now() - start;
     console.error('[/tv/info] error:', error);
     res.status(500).json({
-      success: false,
-      status: 500,
+      status: false,
+      statusCode: 500,
       error: error.message || 'TV Info harvest error',
-      latencyMs,
     });
   }
 });
 
-// Frontend Vite Middleware / Production static serving
+// ============================================================
+//  Frontend + Start Server
+// ============================================================
 async function startServer() {
   const isProduction = process.env.NODE_ENV === 'production';
 
