@@ -82,7 +82,7 @@ export async function scrapeCineSubzMovies(query: string): Promise<SearchResultI
           liveResults.push({
             title,
             link,
-            image: image || 'https://images.unsplash.com/photo-1604200213928-ba3cf4fc8436?auto=format&fit=crop&w=600&q=80',
+            image: image || 'https://images.unsplash.com/photo-1604200213928-ba3cf4fc8436',
             type: 'movie',
             year: year || '2026'
           });
@@ -102,7 +102,7 @@ export async function scrapeCineSubzMovies(query: string): Promise<SearchResultI
     {
       title: `${capitalizedQuery} (2026) Sinhala Subtitles`,
       link: `https://cinesubz.net/movies/${encodeURIComponent(query.toLowerCase())}-sinhala-subtitles/`,
-      image: 'https://images.unsplash.com/photo-1536440136628-849c177e76a1?auto=format&fit=crop&w=600&q=80',
+      image: 'https://images.unsplash.com/photo-1536440136628-849c177e76a1',
       type: 'movie',
       year: '2026',
       rating: '8.0',
@@ -247,7 +247,7 @@ export async function scrapeCineSubzTVSearch(query: string): Promise<SearchResul
           list.push({
             title,
             link,
-            image: image || 'https://images.unsplash.com/photo-1578632767115-351597cf2477?auto=format&fit=crop&w=600&q=80',
+            image: image || 'https://images.unsplash.com/photo-1578632767115-351597cf2477',
             type: 'tvshows',
           });
         }
@@ -264,7 +264,7 @@ export async function scrapeCineSubzTVSearch(query: string): Promise<SearchResul
     {
       title: `${capitalized} (2026) TV Series Sinhala Subtitles`,
       link: `https://cinesubz.net/tvshows/${encodeURIComponent(query.toLowerCase())}/`,
-      image: 'https://images.unsplash.com/photo-1578632767115-351597cf2477?auto=format&fit=crop&w=600&q=80',
+      image: 'https://images.unsplash.com/photo-1578632767115-351597cf2477',
       type: 'tvshows',
       year: '2026',
     },
