@@ -2,76 +2,114 @@ import * as cheerio from 'cheerio';
 
 export interface SearchResultItem {
   title: string;
-  image: string;
-  type: 'movies' | 'tvshows';
-  quality: string;
-  rating: string;
   link: string;
+  image: string;
+  type: 'movie' | 'tvshows';
+  year?: string;
+  rating?: string;
+  quality?: string;
 }
 
 export interface MovieInfoResult {
   title: string;
   image?: string;
-  quality?: string;
+  year: string;
+  genre: string;
   rating?: string;
-  imdb?: string;
-  director?: string;
-  language?: string;
-  genres?: string[];
-  story?: string;
-  cast?: Array<{ name: string; role: string; image?: string }>;
-  gallery?: string[];
-  trailer?: string;
-  year?: string;
   duration?: string;
-  tag?: string;
-  directors?: string;
-  stars?: string;
-  country?: string;
+  director?: string;
+  cast?: string[];
+  synopsis?: string;
   sourceUrl?: string;
   downloads: Array<{
+    title: string;
     quality: string;
-    size: string;
-    language: string;
+    size?: string;
+    language?: string;
     link: string;
   }>;
 }
 
 export interface TVSeriesInfoResult {
   title: string;
-  image?: string;
-  quality?: string;
+  year: string;
+  genre: string;
   rating?: string;
-  year?: string;
-  genre?: string;
-  seasons?: number;
   episodesCount: number;
+  seasons?: number;
   synopsis?: string;
   sourceUrl?: string;
   episodes?: Array<{
     episodeNumber: number;
     title: string;
-    link: string;
-    downloadLinks: Array<{ quality: string; link: string }>;
+    downloadLinks: Array<{
+      quality: string;
+      link: string;
+    }>;
   }>;
 }
 
+const UA =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
+
 // ============================================================
-//  SEARCH — Movies & TV
+//  PUPPETEER HELPERS (dynamic import — only used when needed)
+// ============================================================
+async function getBrowser() {
+  const isProd = process.env.NODE_ENV === 'production';
+
+  if (isProd) {
+    // Heroku / Lambda — use @sparticuz/chromium
+    const chromium = (await import('@sparticuz/chromium')).default;
+    const puppeteer = await import('puppeteer-core');
+
+    return puppeteer.default.launch({
+      args: [...chromium.args, '--no-sandbox', '--disable-setuid-sandbox'],
+      defaultViewport: chromium.defaultViewport,
+      executablePath: await chromium.executablePath(),
+      headless: true,
+    });
+  } else {
+    // Local dev — try full puppeteer first, fallback to system chrome
+    try {
+      const puppeteer = await import('puppeteer');
+      return puppeteer.default.launch({
+        headless: true,
+        args: ['--no-sandbox', '--disable-setuid-sandbox'],
+      });
+    } catch {
+      const puppeteer = await import('puppeteer-core');
+      return puppeteer.default.launch({
+        headless: true,
+        executablePath:
+          process.env.PUPPETEER_EXECUTABLE_PATH ||
+          '/usr/bin/google-chrome',
+        args: ['--no-sandbox', '--disable-setuid-sandbox'],
+      });
+    }
+  }
+}
+
+// ============================================================
+//  SEARCH — real scrape
 // ============================================================
 export async function scrapeCineSubzMovies(query: string): Promise<SearchResultItem[]> {
-  const searchUrl = `https://cinesubz.net/?s=${encodeURIComponent(query)}`;
+  const q = (query || '').trim();
+  if (!q) return [];
+
+  const searchUrl = `https://cinesubz.net/?s=${encodeURIComponent(q)}`;
   const results: SearchResultItem[] = [];
 
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 8000);
+    const timeout = setTimeout(() => controller.abort(), 10000);
+
+    console.log('[search] GET', searchUrl);
 
     const res = await fetch(searchUrl, {
       signal: controller.signal,
       headers: {
-        'User-Agent':
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        'User-Agent': UA,
         Accept:
           'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
         'Accept-Language': 'en-US,en;q=0.9',
@@ -79,53 +117,52 @@ export async function scrapeCineSubzMovies(query: string): Promise<SearchResultI
     });
     clearTimeout(timeout);
 
+    console.log('[search] status:', res.status);
     if (!res.ok) return results;
 
     const html = await res.text();
+    console.log('[search] html length:', html.length);
+
     const $ = cheerio.load(html);
 
-    // CineSubz search results usually are inside <article class="item ...">
     $('article.item, article, .result-item, .item-movies, .item-tvshows').each((_, el) => {
       const titleEl = $(el)
-        .find('.data .title a, .title a, h3 a, h2 a, .entry-title a')
+        .find('.data .title a, .data h3 a, .title a, h3 a, h2 a, .entry-title a')
         .first();
       const title = titleEl.text().trim();
       const link = titleEl.attr('href') || '';
 
       const image =
-        $(el).find('.poster img, img').first().attr('src') ||
-        $(el).find('.poster img, img').first().attr('data-src') ||
+        $(el).find('.poster img, .data img, img').first().attr('src') ||
+        $(el).find('img').first().attr('data-src') ||
         '';
 
       const quality =
         $(el).find('.quality, .item-quality, .meta .quality').first().text().trim() || 'N/A';
 
-      const rating =
+      const ratingRaw =
         $(el).find('.rating, .vote, .meta .rating').first().text().trim() || 'N/A';
+      const rating = ratingRaw.replace(/[★☆\s]/g, '') || 'N/A';
 
-      // Detect type by URL
-      let type: 'movies' | 'tvshows' = 'movies';
-      if (link.includes('/tvshows/')) type = 'tvshows';
-      else if (link.includes('/movies/')) type = 'movies';
-      else if (title.toLowerCase().includes('tv series')) type = 'tvshows';
+      const yearMatch = title.match(/\((\d{4})\)/);
+      const year = yearMatch ? yearMatch[1] : undefined;
+
+      let type: 'movie' | 'tvshows' = 'movie';
+      if (link.includes('/tvshows/') || title.toLowerCase().includes('tv series')) {
+        type = 'tvshows';
+      }
 
       if (title && link) {
-        results.push({
-          title,
-          image,
-          type,
-          quality,
-          rating,
-          link,
-        });
+        results.push({ title, link, image, type, year, rating, quality });
       }
     });
 
-    return results;
+    console.log('[search] results:', results.length);
   } catch (err) {
-    console.error('[scraper] search error:', err);
-    return results;
+    console.error('[search] error:', err);
   }
+
+  return results;
 }
 
 export async function scrapeCineSubzTVSearch(query: string): Promise<SearchResultItem[]> {
@@ -134,289 +171,283 @@ export async function scrapeCineSubzTVSearch(query: string): Promise<SearchResul
 }
 
 // ============================================================
-//  MOVIE INFO + DOWNLOADS
+//  MOVIE INFO + DOWNLOADS — Puppeteer + network interception
 // ============================================================
 export async function scrapeCineSubzMovieInfo(
   targetUrlOrQuery: string
 ): Promise<MovieInfoResult> {
-  const query = (targetUrlOrQuery || '').trim();
+  const q = (targetUrlOrQuery || '').trim();
+  if (!q) {
+    return {
+      title: 'No query',
+      year: '—',
+      genre: '—',
+      downloads: [],
+    };
+  }
 
-  // If it's a plain query, do a search first and pick the first movie result
-  let movieUrl = query;
-  if (!query.startsWith('http')) {
-    const searchResults = await scrapeCineSubzMovies(query);
-    const firstMovie =
-      searchResults.find((r) => r.type === 'movies') || searchResults[0];
-
-    if (firstMovie) {
-      movieUrl = firstMovie.link;
-      console.log('[scraper] resolved query →', movieUrl);
+  // Resolve query → real movie URL via search
+  let movieUrl = q;
+  if (!q.startsWith('http')) {
+    const search = await scrapeCineSubzMovies(q);
+    const first = search.find((r) => r.type === 'movie') || search[0];
+    if (first) {
+      movieUrl = first.link;
+      console.log('[info] resolved →', movieUrl);
     } else {
-      const fallbackUrl = `https://cinesubz.net/?s=${encodeURIComponent(query)}`;
+      const searchUrl = `https://cinesubz.net/?s=${encodeURIComponent(q)}`;
       return {
-        title: `${query} — No results on CineSubz`,
+        title: `${q} — No results on CineSubz`,
         year: '—',
-        sourceUrl: fallbackUrl,
+        genre: '—',
+        sourceUrl: searchUrl,
         downloads: [
           {
+            title: '🔍 Open CineSubz Search',
             quality: 'Browsable',
             size: 'N/A',
-            language: 'N/A',
-            link: fallbackUrl,
+            link: searchUrl,
           },
         ],
       };
     }
   }
 
+  // ---------- PUPPETEER: launch browser & intercept downloads ----------
+  let browser;
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 12000);
+    browser = await getBrowser();
+    console.log('[info] browser launched');
 
-    const res = await fetch(movieUrl, {
-      signal: controller.signal,
-      headers: {
-        'User-Agent':
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-        Accept:
-          'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.9',
-      },
-    });
-    clearTimeout(timeout);
+    const page = await browser.newPage();
+    await page.setUserAgent(UA);
 
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-    const html = await res.text();
-    const $ = cheerio.load(html);
-
-    // ---------- TITLE ----------
-    const title =
-      $('h1.entry-title, h1[itemprop="name"], .sheader .data h1, .movie-title h1')
-        .first()
-        .text()
-        .trim() || 'CineSubz Movie';
-
-    // ---------- POSTER ----------
-    const image =
-      $('.poster img, .sheader .poster img, img[itemprop="image"], .movie-poster img')
-        .first()
-        .attr('src') ||
-      $('.poster img, .sheader .poster img').first().attr('data-src') ||
-      '';
-
-    // ---------- RATING ----------
-    let rating =
-      $('.rating, [itemprop="ratingValue"], .imdb-rating span, .vote')
-        .first()
-        .text()
-        .trim() || 'N/A';
-    // Clean up like "★ 8.2" → "8.2"
-    rating = rating.replace(/[★☆\s]/g, '') || 'N/A';
-
-    // ---------- QUALITY ----------
-    const quality =
-      $('.quality, .item-quality, .sheader .quality').first().text().trim() || 'N/A';
-
-    // ---------- YEAR ----------
-    const yearFromTitle = title.match(/\((\d{4})\)/)?.[1];
-    const year =
-      $('.year, [itemprop="datePublished"], .date').first().text().trim() ||
-      yearFromTitle ||
-      '—';
-
-    // ---------- DURATION ----------
-    const duration =
-      $('.runtime, [itemprop="duration"], .duration').first().text().trim() || 'N/A';
-
-    // ---------- DIRECTOR ----------
-    const director =
-      $('.director, [itemprop="director"] a, .directors a').first().text().trim() || 'N/A';
-
-    // ---------- IMDB ----------
-    const imdb =
-      $('.imdb, .imdb-rating, [data-imdb], .rating-imdb').first().text().trim() || rating;
-
-    // ---------- LANGUAGE ----------
-    const language =
-      $('.language, [itemprop="inLanguage"]').first().text().trim() || 'English';
-
-    // ---------- GENRES ----------
-    const genres: string[] = [];
-    $('.genres a, [itemprop="genre"] a, .sgeneros a').each((_, el) => {
-      const g = $(el).text().trim();
-      if (g) genres.push(g);
-    });
-
-    // ---------- STORY / SYNOPSIS ----------
-    const story =
-      $('#info .wp-content p, .wp-content p, [itemprop="description"], .story p, .synopsis p')
-        .first()
-        .text()
-        .trim() || '';
-
-    // ---------- CAST ----------
-    const cast: Array<{ name: string; role: string; image?: string }> = [];
-    $('.cast .person, .actors .person, .cast-list .cast-item, .person').each((_, el) => {
-      const name = $(el).find('.name, .person-name, a').first().text().trim();
-      const role = $(el).find('.role, .character, .caracter').first().text().trim();
-      const img = $(el).find('img').attr('src') || '';
-      if (name) cast.push({ name, role: role || 'N/A', image: img });
-    });
-
-    // ---------- GALLERY ----------
-    const gallery: string[] = [];
-    $('.gallery img, .backdrops img').each((_, el) => {
-      const src = $(el).attr('src');
-      if (src && src.startsWith('http')) gallery.push(src);
-    });
-
-    // ---------- TRAILER ----------
-    const trailer =
-      $('a[href*="youtube.com"], a[href*="youtu.be"]').first().attr('href') ||
-      $('iframe[src*="youtube"]').first().attr('src') ||
-      '';
-
-    // ---------- COUNTRY ----------
-    const country =
-      $('.country, [itemprop="countryOfOrigin"]').first().text().trim() || 'N/A';
-
-    // ---------- DOWNLOADS ----------
-    const downloads: Array<{
+    // Collected downloads from intercepted JSON responses
+    const collectedDownloads: Array<{
+      title: string;
       quality: string;
-      size: string;
-      language: string;
+      size?: string;
+      language?: string;
       link: string;
     }> = [];
 
-    // Common CineSubz structure: <ul class="download-links"><li>...</li></ul>
-    // Each <a> is a download; nearby text tells quality / size / provider.
-    const downloadSelectors = [
-      'ul#download-links li a',
-      '.download-links a',
-      '.downloads a',
-      '#downloads a',
-      '.links-table a',
-      'table.downloads a',
-      'a[href*="pixeldrain"]',
-      'a[href*="telegram.me"]',
-      'a[href*="t.me/"]',
-      'a[href*="supercloud"]',
-      'a[href*="drive.google"]',
-      'a[href*="mega.nz"]',
-    ];
+    // Intercept JSON responses that look like download lists
+    page.on('response', async (response) => {
+      try {
+        const url = response.url();
+        const ct = response.headers()['content-type'] || '';
+        if (!ct.includes('json')) return;
+        if (!url.includes('/wp-json/')) return;
 
-    $(downloadSelectors.join(',')).each((_, el) => {
-      let link = $(el).attr('href') || '';
-      const label = $(el).text().trim();
+        // Only interested in zetaplayer / zetaflix
+        if (!url.includes('zetaplayer') && !url.includes('zetaflix')) return;
 
-      // Skip social / nav / non-download links
-      if (
-        !link ||
-        link.startsWith('#') ||
-        link.includes('javascript:') ||
-        link.includes('facebook.com') ||
-        link.includes('twitter.com') ||
-        link.includes('whatsapp.com') ||
-        link.includes('reddit.com') ||
-        link.includes('pinterest.com') ||
-        link.includes('tumblr.com') ||
-        link.includes('blogger.com') ||
-        link.includes('vk.com')
-      ) {
-        return;
-      }
+        const json = await response.json().catch(() => null);
+        if (!json) return;
 
-      // Decode base64 redirect wrappers (?r=..., redirect=...)
-      if (link.includes('?r=') || link.includes('redirect=')) {
-        try {
-          const urlParams = new URLSearchParams(link.split('?')[1]);
-          const rawEncoded = urlParams.get('r') || urlParams.get('redirect');
-          if (rawEncoded) {
-            const decoded = Buffer.from(rawEncoded, 'base64').toString('utf-8');
-            if (decoded.startsWith('http')) link = decoded;
+        console.log('[info] intercepted JSON:', url);
+
+        // Walk the JSON tree looking for download-like objects
+        const walk = (obj: any) => {
+          if (!obj) return;
+          if (Array.isArray(obj)) {
+            obj.forEach(walk);
+            return;
           }
-        } catch {
-          /* keep default */
-        }
+          if (typeof obj === 'object') {
+            const link = obj.link || obj.url || obj.href || obj.download;
+            if (typeof link === 'string' && link.startsWith('http')) {
+              const quality =
+                obj.quality || obj.resolution || obj.label || obj.title || 'Download';
+              const size = obj.size || obj.filesize || 'N/A';
+              const language = obj.language || obj.lang || 'English';
+              collectedDownloads.push({
+                title: obj.title || quality,
+                quality,
+                size,
+                language,
+                link,
+              });
+            }
+            Object.values(obj).forEach(walk);
+          }
+        };
+        walk(json);
+      } catch {
+        /* ignore */
       }
-
-      // Context text (a + closest row/li/div)
-      const contextText =
-        label + ' ' + $(el).closest('tr, li, div').text().replace(/\s+/g, ' ').trim();
-
-      // Quality
-      const qualityMatch = contextText.match(
-        /(480p|720p|1080p|2160p|4K|WEB-?DL|HDRip|WEBRip|BLU-?RAY|BluRay|HDTV)/i
-      );
-      let quality = qualityMatch ? qualityMatch[0] : label || 'Download';
-
-      // Size
-      const sizeMatch = contextText.match(/\d+(\.\d+)?\s?(GB|MB)/i);
-      const size = sizeMatch ? sizeMatch[0] : 'N/A';
-
-      // Language
-      const langMatch = contextText.match(
-        /(English|Sinhala|Tamil|Hindi|Telugu|Malayalam|Kannada)/i
-      );
-      const lang = langMatch ? langMatch[0] : 'English';
-
-      // Provider tag
-      let provider = '';
-      if (link.includes('pixeldrain')) provider = ' [PixelDrain]';
-      else if (link.includes('telegram.me') || link.includes('t.me/'))
-        provider = ' [Telegram Bot]';
-      else if (link.includes('supercloud') || link.includes('drive0'))
-        provider = ' [Direct High-Speed Server]';
-      else if (link.includes('drive.google.com')) provider = ' [Google Drive]';
-      else if (link.includes('mega.nz')) provider = ' [MEGA]';
-
-      downloads.push({
-        quality: `${quality}${provider}`.trim(),
-        size,
-        language: lang,
-        link,
-      });
     });
 
-    // Deduplicate by link
-    const uniqueDownloads = downloads.filter(
-      (item, i, self) => i === self.findIndex((x) => x.link === item.link)
+    console.log('[info] goto', movieUrl);
+    await page.goto(movieUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+
+    // ---------- Extract basic metadata from DOM ----------
+    const meta = await page.evaluate(() => {
+      const pick = (sels: string[]) => {
+        for (const s of sels) {
+          const el = document.querySelector(s);
+          const t = el?.textContent?.trim();
+          if (t) return t;
+        }
+        return '';
+      };
+      const pickAttr = (sels: string[], attr: string) => {
+        for (const s of sels) {
+          const el = document.querySelector(s) as HTMLImageElement | null;
+          const v = el?.getAttribute(attr);
+          if (v) return v;
+        }
+        return '';
+      };
+
+      return {
+        title: pick([
+          'h1.entry-title',
+          '.sheader .data h1',
+          'h1[itemprop="name"]',
+          'h1',
+        ]),
+        image: pickAttr(
+          ['.poster img', '.sheader .poster img', 'img[itemprop="image"]'],
+          'src'
+        ),
+        rating: pick(['.rating', '[itemprop="ratingValue"]', '.vote']),
+        year: pick(['.year', '[itemprop="datePublished"]']),
+        duration: pick(['.runtime', '[itemprop="duration"]', '.duration']),
+        director: pick(['.director a', '[itemprop="director"] a']),
+      };
+    });
+
+    // ---------- Click every "Download Links" button ----------
+    const clickSelectors = [
+      'text/Direct & Telegram Download Links',
+      'a:has-text("Download")',
+      'button:has-text("Download")',
+      '.download-btn',
+      '#download-links-btn',
+    ];
+
+    for (const sel of clickSelectors) {
+      try {
+        const handles = await page.$$(sel);
+        for (const h of handles) {
+          await h.click({ delay: 50 }).catch(() => {});
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+
+    // Wait a bit for AJAX responses
+    await new Promise((r) => setTimeout(r, 4000));
+
+    // ---------- Also try to extract nonce & hit API manually ----------
+    const wpConfig = await page.evaluate(() => {
+      const w: any = window as any;
+      return {
+        nonce:
+          w?.wpApiSettings?.nonce ||
+          w?.wp?.apiSettings?.nonce ||
+          w?.zetaplayer?.nonce ||
+          w?.zetaflix?.nonce ||
+          null,
+        root:
+          w?.wpApiSettings?.root ||
+          w?.wp?.apiSettings?.root ||
+          'https://cinesubz.net/wp-json/',
+        postId:
+          w?.zetaplayer?.postId ||
+          w?.zetaflix?.postId ||
+          w?.postId ||
+          null,
+      };
+    });
+    console.log('[info] wpConfig:', wpConfig);
+
+    // If we got a nonce & postId, hit zetaplayer directly
+    if (wpConfig.nonce && wpConfig.postId) {
+      try {
+        const apiUrl = `${wpConfig.root}zetaplayer/v2/movies/${wpConfig.postId}`;
+        const r = await fetch(apiUrl, {
+          headers: {
+            'User-Agent': UA,
+            'X-WP-Nonce': wpConfig.nonce,
+            Accept: 'application/json',
+          },
+        });
+        if (r.ok) {
+          const j = await r.json();
+          console.log('[info] zetaplayer direct OK');
+          const walk = (obj: any) => {
+            if (!obj) return;
+            if (Array.isArray(obj)) return obj.forEach(walk);
+            if (typeof obj === 'object') {
+              const link = obj.link || obj.url || obj.href || obj.download;
+              if (typeof link === 'string' && link.startsWith('http')) {
+                collectedDownloads.push({
+                  title: obj.title || obj.quality || 'Download',
+                  quality: obj.quality || obj.resolution || obj.label || 'Download',
+                  size: obj.size || obj.filesize || 'N/A',
+                  language: obj.language || obj.lang || 'English',
+                  link,
+                });
+              }
+              Object.values(obj).forEach(walk);
+            }
+          };
+          walk(j);
+        }
+      } catch (e) {
+        console.log('[info] zetaplayer direct failed:', e);
+      }
+    }
+
+    await browser.close();
+    browser = undefined;
+
+    // ---------- Build final result ----------
+    const downloads = collectedDownloads.filter(
+      (d, i, self) => i === self.findIndex((x) => x.link === d.link)
     );
 
+    console.log('[info] total downloads:', downloads.length);
+
     return {
-      title,
-      image,
-      quality,
-      rating,
-      imdb,
-      director,
-      language,
-      genres,
-      story,
-      cast,
-      gallery,
-      trailer,
-      year,
-      duration,
-      tag: language,
-      directors: director,
-      stars: cast.map((c) => c.name).slice(0, 5).join(', ') || 'N/A',
-      country,
+      title: meta.title || 'CineSubz Movie',
+      image: meta.image || undefined,
+      year: meta.year || '—',
+      genre: 'N/A',
+      rating: meta.rating || 'N/A',
+      duration: meta.duration || 'N/A',
+      director: meta.director || 'N/A',
+      cast: [],
+      synopsis: '',
       sourceUrl: movieUrl,
-      downloads: uniqueDownloads,
+      downloads:
+        downloads.length > 0
+          ? downloads
+          : [
+              {
+                title: '🔍 Open CineSubz Page (no direct links captured)',
+                quality: 'Browsable',
+                size: 'N/A',
+                link: movieUrl,
+              },
+            ],
     };
-  } catch (e) {
-    console.error('[scraper] movie info error:', e);
+  } catch (err) {
+    console.error('[info] puppeteer error:', err);
+    if (browser) await browser.close().catch(() => {});
     return {
-      title: `${query} — CineSubz`,
+      title: `${q} — CineSubz`,
       year: '—',
+      genre: '—',
       sourceUrl: movieUrl,
       downloads: [
         {
-          quality: 'Open CineSubz Page',
+          title: '🔍 Open CineSubz Page',
+          quality: 'Browsable',
           size: 'N/A',
-          language: 'N/A',
           link: movieUrl,
         },
       ],
@@ -425,62 +456,45 @@ export async function scrapeCineSubzMovieInfo(
 }
 
 // ============================================================
-//  TV SERIES INFO
+//  TV INFO — basic scrape (Puppeteer-lite)
 // ============================================================
 export async function scrapeCineSubzTVInfo(
   targetUrlOrQuery: string
 ): Promise<TVSeriesInfoResult> {
-  const query = (targetUrlOrQuery || '').trim();
+  const q = (targetUrlOrQuery || '').trim();
+  if (!q) {
+    return { title: 'No query', year: '—', genre: '—', episodesCount: 0 };
+  }
 
-  let tvUrl = query;
-  if (!query.startsWith('http')) {
-    const searchResults = await scrapeCineSubzTVSearch(query);
-    if (searchResults.length > 0) {
-      tvUrl = searchResults[0].link;
+  let tvUrl = q;
+  if (!q.startsWith('http')) {
+    const results = await scrapeCineSubzTVSearch(q);
+    if (results.length > 0) {
+      tvUrl = results[0].link;
     } else {
-      const fallbackUrl = `https://cinesubz.net/?s=${encodeURIComponent(query)}`;
+      const searchUrl = `https://cinesubz.net/?s=${encodeURIComponent(q)}`;
       return {
-        title: `${query} — No TV series found`,
+        title: `${q} — No TV results`,
+        year: '—',
+        genre: '—',
         episodesCount: 0,
-        sourceUrl: fallbackUrl,
-        episodes: [
-          {
-            episodeNumber: 0,
-            title: '🔍 Open CineSubz Search',
-            link: fallbackUrl,
-            downloadLinks: [{ quality: 'Browsable', link: fallbackUrl }],
-          },
-        ],
+        sourceUrl: searchUrl,
+        episodes: [],
       };
     }
   }
 
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 12000);
-
     const res = await fetch(tvUrl, {
-      signal: controller.signal,
-      headers: {
-        'User-Agent':
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-        Accept:
-          'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-      },
+      headers: { 'User-Agent': UA },
     });
-    clearTimeout(timeout);
-
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
     const html = await res.text();
     const $ = cheerio.load(html);
 
     const title =
       $('h1.entry-title, .sheader .data h1, h1[itemprop="name"]').first().text().trim() ||
-      'CineSubz TV Series';
-
-    const image =
-      $('.poster img, .sheader .poster img').first().attr('src') || '';
+      'CineSubz TV';
 
     const rating =
       $('.rating, [itemprop="ratingValue"]').first().text().trim() || 'N/A';
@@ -499,11 +513,9 @@ export async function scrapeCineSubzTVInfo(
     const synopsis =
       $('.wp-content p, [itemprop="description"]').first().text().trim() || '';
 
-    // Episodes
     const episodes: Array<{
       episodeNumber: number;
       title: string;
-      link: string;
       downloadLinks: Array<{ quality: string; link: string }>;
     }> = [];
 
@@ -511,44 +523,35 @@ export async function scrapeCineSubzTVInfo(
       const epTitle =
         $(el).find('.episodiotitle a, a').first().text().trim() || `Episode ${i + 1}`;
       const epLink = $(el).find('a').first().attr('href') || '';
-
       if (epLink) {
         episodes.push({
           episodeNumber: i + 1,
           title: epTitle,
-          link: epLink,
-          downloadLinks: [{ quality: 'Open Episode Page', link: epLink }],
+          downloadLinks: [{ quality: 'Open Episode', link: epLink }],
         });
       }
     });
 
     return {
       title,
-      image,
-      quality: 'N/A',
-      rating,
       year,
       genre,
+      rating,
       seasons: 1,
       episodesCount: episodes.length,
       synopsis,
       sourceUrl: tvUrl,
       episodes,
     };
-  } catch (e) {
-    console.error('[scraper] tv info error:', e);
+  } catch (err) {
+    console.error('[tv/info] error:', err);
     return {
-      title: `${query} — CineSubz TV`,
+      title: `${q} — CineSubz`,
+      year: '—',
+      genre: '—',
       episodesCount: 0,
       sourceUrl: tvUrl,
-      episodes: [
-        {
-          episodeNumber: 0,
-          title: 'Open CineSubz',
-          link: tvUrl,
-          downloadLinks: [{ quality: 'Browsable', link: tvUrl }],
-        },
-      ],
+      episodes: [],
     };
   }
 }
