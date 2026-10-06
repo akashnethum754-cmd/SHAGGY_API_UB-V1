@@ -59,7 +59,6 @@ async function getBrowser() {
   const isProd = process.env.NODE_ENV === 'production';
 
   if (isProd) {
-    // Heroku — use system Chromium from the puppeteer-heroku-buildpack
     const puppeteer = await import('puppeteer');
     return puppeteer.default.launch({
       args: [
@@ -78,7 +77,6 @@ async function getBrowser() {
     });
   }
 
-  // Local dev
   const puppeteer = await import('puppeteer');
   return puppeteer.default.launch({
     headless: true,
@@ -87,7 +85,7 @@ async function getBrowser() {
 }
 
 // ============================================================
-//  SEARCH — Movies & TV (real scrape via fetch)
+//  SEARCH — via Puppeteer (bypasses Cloudflare)
 // ============================================================
 export async function scrapeCineSubzMovies(query: string): Promise<SearchResultItem[]> {
   const q = (query || '').trim();
@@ -96,72 +94,116 @@ export async function scrapeCineSubzMovies(query: string): Promise<SearchResultI
   const searchUrl = `https://cinesubz.net/?s=${encodeURIComponent(q)}`;
   const results: SearchResultItem[] = [];
 
+  console.log('[search] Puppeteer GET', searchUrl);
+
+  let browser;
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 10000);
+    browser = await getBrowser();
+    const page = await browser.newPage();
+    await page.setUserAgent(UA);
 
-    console.log('[search] GET', searchUrl);
-
-    const res = await fetch(searchUrl, {
-      signal: controller.signal,
-      headers: {
-        'User-Agent': UA,
-        Accept:
-          'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.9',
-      },
+    // Block heavy resources to speed up
+    await page.setRequestInterception(true);
+    page.on('request', (req) => {
+      const type = req.resourceType();
+      if (['image', 'font', 'stylesheet', 'media'].includes(type)) {
+        req.abort();
+      } else {
+        req.continue();
+      }
     });
-    clearTimeout(timeout);
 
-    console.log('[search] status:', res.status);
-    if (!res.ok) return results;
+    await page.goto(searchUrl, {
+      waitUntil: 'domcontentloaded',
+      timeout: 30000,
+    });
 
-    const html = await res.text();
-    console.log('[search] html length:', html.length);
+    // Wait for JS to render search results
+    await new Promise((r) => setTimeout(r, 3000));
 
-    const $ = cheerio.load(html);
+    const items = await page.evaluate(() => {
+      const out: Array<{
+        title: string;
+        link: string;
+        image: string;
+        quality: string;
+        rating: string;
+      }> = [];
 
-    $('article.item, article, .result-item, .item-movies, .item-tvshows').each(
-      (_, el) => {
-        const titleEl = $(el)
-          .find('.data .title a, .data h3 a, .title a, h3 a, h2 a, .entry-title a')
-          .first();
-        const title = titleEl.text().trim();
-        const link = titleEl.attr('href') || '';
+      const articles = document.querySelectorAll(
+        'article.item, article, .result-item, .item-movies, .item-tvshows'
+      );
 
+      articles.forEach((el) => {
+        const titleEl =
+          el.querySelector('.data .title a') ||
+          el.querySelector('.data h3 a') ||
+          el.querySelector('.title a') ||
+          el.querySelector('h3 a') ||
+          el.querySelector('h2 a') ||
+          el.querySelector('.entry-title a');
+
+        if (!titleEl) return;
+
+        const title = (titleEl.textContent || '').trim();
+        const link = titleEl.getAttribute('href') || '';
+
+        const imgEl = el.querySelector('.poster img, .data img, img');
         const image =
-          $(el).find('.poster img, .data img, img').first().attr('src') ||
-          $(el).find('img').first().attr('data-src') ||
-          '';
+          imgEl?.getAttribute('src') || imgEl?.getAttribute('data-src') || '';
 
-        const quality =
-          $(el).find('.quality, .item-quality, .meta .quality').first().text().trim() ||
-          'N/A';
+        const qualityEl = el.querySelector(
+          '.quality, .item-quality, .meta .quality'
+        );
+        const quality = (qualityEl?.textContent || 'N/A').trim();
 
-        const ratingRaw =
-          $(el).find('.rating, .vote, .meta .rating').first().text().trim() || 'N/A';
+        const ratingEl = el.querySelector('.rating, .vote, .meta .rating');
+        const ratingRaw = (ratingEl?.textContent || 'N/A').trim();
         const rating = ratingRaw.replace(/[★☆\s]/g, '') || 'N/A';
 
-        const yearMatch = title.match(/\((\d{4})\)/);
-        const year = yearMatch ? yearMatch[1] : undefined;
-
-        let type: 'movie' | 'tvshows' = 'movie';
-        if (link.includes('/tvshows/') || title.toLowerCase().includes('tv series')) {
-          type = 'tvshows';
-        }
-
         if (title && link) {
-          results.push({ title, link, image, type, year, rating, quality });
+          out.push({ title, link, image, quality, rating });
         }
+      });
+
+      return out;
+    });
+
+    console.log('[search] Puppeteer found:', items.length, 'items');
+
+    for (const item of items) {
+      const yearMatch = item.title.match(/\((\d{4})\)/);
+      const year = yearMatch ? yearMatch[1] : undefined;
+
+      let type: 'movie' | 'tvshows' = 'movie';
+      if (
+        item.link.includes('/tvshows/') ||
+        item.title.toLowerCase().includes('tv series')
+      ) {
+        type = 'tvshows';
       }
-    );
+
+      results.push({
+        title: item.title,
+        link: item.link,
+        image: item.image,
+        type,
+        year,
+        rating: item.rating,
+        quality: item.quality,
+      });
+    }
+
+    await browser.close();
+    browser = undefined;
 
     console.log('[search] results:', results.length);
+    return results;
   } catch (err) {
-    console.error('[search] error:', err);
+    console.error('[search] Puppeteer error:', err);
+    if (browser) await browser.close().catch(() => {});
+    return results;
   }
-
-  return results;
 }
 
 export async function scrapeCineSubzTVSearch(query: string): Promise<SearchResultItem[]> {
@@ -212,7 +254,6 @@ export async function scrapeCineSubzMovieInfo(
     }
   }
 
-  // ---------- PUPPETEER ----------
   let browser;
   try {
     browser = await getBrowser();
@@ -276,7 +317,7 @@ export async function scrapeCineSubzMovieInfo(
     console.log('[info] goto', movieUrl);
     await page.goto(movieUrl, { waitUntil: 'networkidle2', timeout: 30000 });
 
-    // Extract metadata from DOM
+    // Extract metadata
     const meta = await page.evaluate(() => {
       const pick = (sels: string[]) => {
         for (const s of sels) {
@@ -339,10 +380,10 @@ export async function scrapeCineSubzMovieInfo(
       }
     }
 
-    // Wait for AJAX to finish
+    // Wait for AJAX
     await new Promise((r) => setTimeout(r, 4000));
 
-    // Try to detect WP nonce & postId from the page
+    // Try to detect WP nonce & postId from page
     const wpConfig = await page.evaluate(() => {
       const w: any = window as any;
       return {
@@ -365,7 +406,7 @@ export async function scrapeCineSubzMovieInfo(
     });
     console.log('[info] wpConfig:', wpConfig);
 
-    // If we have nonce + postId, hit zetaplayer directly
+    // If nonce + postId available, hit zetaplayer directly
     if (wpConfig.nonce && wpConfig.postId) {
       try {
         const apiUrl = `${wpConfig.root}zetaplayer/v2/movies/${wpConfig.postId}`;
@@ -407,7 +448,6 @@ export async function scrapeCineSubzMovieInfo(
     await browser.close();
     browser = undefined;
 
-    // Build final result
     const downloads = collectedDownloads.filter(
       (d, i, self) => i === self.findIndex((x) => x.link === d.link)
     );
@@ -486,67 +526,96 @@ export async function scrapeCineSubzTVInfo(
     }
   }
 
+  let browser;
   try {
-    const res = await fetch(tvUrl, {
-      headers: { 'User-Agent': UA },
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const html = await res.text();
-    const $ = cheerio.load(html);
+    browser = await getBrowser();
+    const page = await browser.newPage();
+    await page.setUserAgent(UA);
 
-    const title =
-      $('h1.entry-title, .sheader .data h1, h1[itemprop="name"]').first().text().trim() ||
-      'CineSubz TV';
+    await page.goto(tvUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+    await new Promise((r) => setTimeout(r, 2000));
 
-    const rating =
-      $('.rating, [itemprop="ratingValue"]').first().text().trim() || 'N/A';
+    const data = await page.evaluate(() => {
+      const pick = (sels: string[]) => {
+        for (const s of sels) {
+          const el = document.querySelector(s);
+          const t = el?.textContent?.trim();
+          if (t) return t;
+        }
+        return '';
+      };
 
-    const year =
-      $('.year, [itemprop="datePublished"]').first().text().trim() ||
-      title.match(/\((\d{4})\)/)?.[1] ||
-      '—';
+      const title =
+        pick([
+          'h1.entry-title',
+          '.sheader .data h1',
+          'h1[itemprop="name"]',
+          'h1',
+        ]) || 'CineSubz TV';
 
-    const genre =
-      $('.genres a, [itemprop="genre"] a')
-        .map((_, el) => $(el).text().trim())
-        .get()
-        .join(', ') || 'N/A';
+      const rating = pick(['.rating', '[itemprop="ratingValue"]']) || 'N/A';
+      const year = pick(['.year', '[itemprop="datePublished"]']);
+      const synopsis = pick([
+        '.wp-content p',
+        '[itemprop="description"]',
+      ]);
 
-    const synopsis =
-      $('.wp-content p, [itemprop="description"]').first().text().trim() || '';
+      const genre =
+        Array.from(
+          document.querySelectorAll('.genres a, [itemprop="genre"] a')
+        )
+          .map((el) => (el.textContent || '').trim())
+          .filter(Boolean)
+          .join(', ') || 'N/A';
 
-    const episodes: Array<{
-      episodeNumber: number;
-      title: string;
-      downloadLinks: Array<{ quality: string; link: string }>;
-    }> = [];
+      const episodes: Array<{
+        episodeNumber: number;
+        title: string;
+        link: string;
+      }> = [];
 
-    $('.episodios li, .episode, .se-c, .episode-list li, .episodes li').each((i, el) => {
-      const epTitle =
-        $(el).find('.episodiotitle a, a').first().text().trim() || `Episode ${i + 1}`;
-      const epLink = $(el).find('a').first().attr('href') || '';
-      if (epLink) {
-        episodes.push({
-          episodeNumber: i + 1,
-          title: epTitle,
-          downloadLinks: [{ quality: 'Open Episode', link: epLink }],
+      document
+        .querySelectorAll(
+          '.episodios li, .episode, .se-c, .episode-list li, .episodes li'
+        )
+        .forEach((el, i) => {
+          const a = el.querySelector('.episodiotitle a, a');
+          if (!a) return;
+          const epTitle = (a.textContent || '').trim() || `Episode ${i + 1}`;
+          const epLink = a.getAttribute('href') || '';
+          if (epLink) {
+            episodes.push({
+              episodeNumber: i + 1,
+              title: epTitle,
+              link: epLink,
+            });
+          }
         });
-      }
+
+      return { title, rating, year, genre, synopsis, episodes };
     });
+
+    await browser.close();
+    browser = undefined;
 
     return {
-      title,
-      year,
-      genre,
-      rating,
+      title: data.title,
+      year: data.year || data.title.match(/\((\d{4})\)/)?.[1] || '—',
+      genre: data.genre,
+      rating: data.rating,
       seasons: 1,
-      episodesCount: episodes.length,
-      synopsis,
+      episodesCount: data.episodes.length,
+      synopsis: data.synopsis,
       sourceUrl: tvUrl,
-      episodes,
+      episodes: data.episodes.map((ep) => ({
+        episodeNumber: ep.episodeNumber,
+        title: ep.title,
+        downloadLinks: [{ quality: 'Open Episode', link: ep.link }],
+      })),
     };
   } catch (err) {
-    console.error('[tv/info] error:', err);
+    console.error('[tv/info] puppeteer error:', err);
+    if (browser) await browser.close().catch(() => {});
     return {
       title: `${q} — CineSubz`,
       year: '—',
